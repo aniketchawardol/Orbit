@@ -1,0 +1,36 @@
+name: loop
+
+services:
+  db:
+    image: postgres:16
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - media:/app/media
+    depends_on:
+      - db
+    command: >
+      sh -c "python manage.py makemigrations core catalog marketplace sellerportal facility --noinput;
+             until python manage.py migrate --noinput; do echo 'waiting for db…'; sleep 2; done;
+             python manage.py collectstatic --noinput;
+             if [ \"$$SEED_ON_BOOT\" = \"1\" ]; then python manage.py seed_demo; fi;
+             exec gunicorn config.wsgi -b 0.0.0.0:8000 --workers $${GUNICORN_WORKERS:-3}"
+
+  frontend:
+    build: ../frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  media:
