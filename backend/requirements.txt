@@ -7,3 +7,5 @@ requests>=2.32
 redis>=5.0
 Pillow>=10.0
 django-storages[s3]>=1.14
+celery>=5.3
+openai>=1.0

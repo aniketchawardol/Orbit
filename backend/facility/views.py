@@ -50,7 +50,26 @@ def receive(request):
     ).first()
     return_photos = return_order.photos if return_order else []
 
-    graded = ai.grade(unit.product.id, untouched=unit.untouched, image_paths=return_photos)
+    # Prefer the multi-source assessment computed asynchronously at return time;
+    # fall back to the single-shot heuristic grader if none completed.
+    from grading.models import AssessmentStatus, GradingAssessment
+
+    assessment = (
+        GradingAssessment.objects.filter(unit=unit, status=AssessmentStatus.DONE)
+        .exclude(suggested_grade="")
+        .order_by("-created_at")
+        .first()
+    )
+    if assessment and assessment.suggested_grade:
+        graded = {
+            "grade": assessment.suggested_grade,
+            "confidence": assessment.confidence or 0.0,
+            "source": f"grading:{assessment.vlm_provider or 'mock'}",
+        }
+    else:
+        graded = ai.grade(
+            unit.product.id, untouched=unit.untouched, image_paths=return_photos
+        )
     priced = ai.price(unit.product.id, unit.product.mrp, graded["grade"])
     unit.grade = graded["grade"]
     unit.grade_confidence = graded["confidence"]

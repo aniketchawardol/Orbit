@@ -8,6 +8,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
   backend:
     build: .
     env_file: .env
@@ -16,12 +22,24 @@ services:
       - media:/app/media
     depends_on:
       - db
+      - redis
     command: >
-      sh -c "python manage.py makemigrations core catalog marketplace sellerportal facility --noinput;
-             until python manage.py migrate --noinput; do echo 'waiting for db…'; sleep 2; done;
+      sh -c "until python manage.py migrate --noinput; do echo 'waiting for db…'; sleep 2; done;
              python manage.py collectstatic --noinput;
              if [ \"$$SEED_ON_BOOT\" = \"1\" ]; then python manage.py seed_demo; fi;
              exec gunicorn config.wsgi -b 0.0.0.0:8000 --workers $${GUNICORN_WORKERS:-3}"
+
+  worker:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - media:/app/media
+    depends_on:
+      - db
+      - redis
+    command: >
+      sh -c "exec celery -A config worker -l info --concurrency $${CELERY_CONCURRENCY:-4}"
 
   frontend:
     build: ../frontend
@@ -33,4 +51,5 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
   media:

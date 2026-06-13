@@ -10,6 +10,10 @@ class Product(TimeStamped):
     category = models.CharField(max_length=50)
     mrp = models.PositiveIntegerField(help_text="₹")
     image = models.ImageField(upload_to="products/", blank=True, null=True)
+    # Open-ended catalog attributes (JSONB): per-category fields such as
+    # {"brand": "...", "material": "...", "size": "...", "compatible_model": "..."}.
+    # Fed to the AI grader so inspection criteria adapt to the product.
+    attributes = models.JSONField(default=dict, blank=True)
     seller = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="products"
     )

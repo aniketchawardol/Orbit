@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from catalog.serializers import ProductSerializer
 
-from .models import Listing, Order
+from .models import Listing, Order, OrderStates
 
 
 def photo_urls(paths):
@@ -38,13 +38,26 @@ class ListingSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     listing = ListingSerializer(read_only=True)
     photo_urls = serializers.SerializerMethodField()
+    return_eligible = serializers.SerializerMethodField()
+    return_deadline = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "listing", "state", "return_reason", "claimed_untouched",
-            "photos", "photo_urls", "created_at",
+            "return_comment", "photos", "photo_urls", "delivered_at",
+            "return_eligible", "return_deadline", "created_at",
         ]
 
     def get_photo_urls(self, obj):
         return photo_urls(obj.photos)
+
+    def get_return_eligible(self, obj):
+        from .returns import is_return_eligible
+
+        return obj.state == OrderStates.DELIVERED and is_return_eligible(obj)
+
+    def get_return_deadline(self, obj):
+        from .returns import return_deadline
+
+        return return_deadline(obj)

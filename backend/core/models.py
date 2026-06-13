@@ -11,6 +11,9 @@ class Roles(models.TextChoices):
 class User(AbstractUser):
     role = models.CharField(max_length=10, choices=Roles.choices, default=Roles.BUYER)
     # Buyers also resell; no extra role needed.
+    # Open-ended buyer/seller profile (JSONB): size chart, current devices,
+    # preferences, etc. Used by AI grading and future personalization.
+    profile = models.JSONField(default=dict, blank=True)
 
 
 class TimeStamped(models.Model):

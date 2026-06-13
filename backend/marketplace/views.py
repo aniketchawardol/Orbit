@@ -1,4 +1,7 @@
+import json
+
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -18,6 +21,7 @@ from .models import (
     OrderStates,
     ReturnReasons,
 )
+from .returns import is_return_eligible, return_deadline
 from .serializers import ListingSerializer, OrderSerializer
 
 # Demo helper: which forward transitions are allowed via /advance
@@ -86,7 +90,7 @@ def my_orders(request):
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def request_return(request, pk):
     try:
-        order = Order.objects.select_related("listing__unit").get(
+        order = Order.objects.select_related("listing__unit__product").get(
             pk=pk, buyer=request.user
         )
     except Order.DoesNotExist:
@@ -94,6 +98,16 @@ def request_return(request, pk):
     if order.state != OrderStates.DELIVERED:
         return Response(
             {"detail": f"Cannot return from state {order.state}."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    # Return window closed -> no return, but the item can still be resold.
+    if not is_return_eligible(order):
+        return Response(
+            {
+                "detail": "Return window has closed for this order.",
+                "resell_available": True,
+                "return_deadline": return_deadline(order),
+            },
             status=status.HTTP_409_CONFLICT,
         )
     reason = request.data.get("reason", ReturnReasons.OTHER)
@@ -105,9 +119,22 @@ def request_return(request, pk):
     except ValueError as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Per-photo client EXIF metadata, JSON-encoded and index-aligned to photos[].
+    metadatas = []
+    raw_meta = request.data.get("metadata")
+    if raw_meta:
+        try:
+            parsed = json.loads(raw_meta)
+            if isinstance(parsed, list):
+                metadatas = parsed
+        except (ValueError, TypeError):
+            metadatas = []
+
     claimed = request.data.get("claimed_untouched") in (True, "true", "True", "1", 1)
+    comment = (request.data.get("comment") or "").strip()
     order.return_reason = reason
     order.claimed_untouched = claimed
+    order.return_comment = comment
     order.photos = photo_paths
     order.transition(
         OrderStates.RETURN_REQUESTED,
@@ -116,6 +143,10 @@ def request_return(request, pk):
         photos=photo_paths,
     )
     order.listing.unit.transition(UnitStates.RETURN_PENDING, actor=request.user)
+    # Kick off async multi-source grading (VLM + similarity + metadata + history).
+    from grading.services import create_return_assessment
+
+    create_return_assessment(order, photo_paths, client_metadatas=metadatas)
     # Green credits: untouched return
     if claimed:
         award_credits(request.user, 5, "UNTOUCHED_RETURN", "Untouched return", order.id)
@@ -136,6 +167,10 @@ def advance_order(request, pk):
             {"detail": f"No demo advance from {order.state}."},
             status=status.HTTP_409_CONFLICT,
         )
+    # Record delivery time so the return window can be measured from it.
+    if nxt == OrderStates.DELIVERED:
+        order.delivered_at = timezone.now()
+        order.save(update_fields=["delivered_at"])
     order.transition(nxt, actor=request.user, demo=True)
     return Response(OrderSerializer(order).data)
 

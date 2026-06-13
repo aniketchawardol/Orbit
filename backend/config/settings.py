@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "sellerportal",
     "facility",
     "greencredits",
+    "grading",
 ]
 
 MIDDLEWARE = [
@@ -153,3 +154,59 @@ STORAGE_DAILY_RATE_BY_CATEGORY = {      # override per category
 }
 PRICE_STEPDOWN_EVERY_DAYS = 7
 PRICE_STEPDOWN_PCT = 10                 # −10% per step, floor band_lo
+
+# --- Return window (block returns past the window; offer resell instead) ---
+RETURN_WINDOW_DAYS = int(os.environ.get("RETURN_WINDOW_DAYS", "7"))
+RETURN_WINDOW_DAYS_BY_CATEGORY = {      # override per category
+    "electronics": 7,
+    "apparel": 14,
+    "footwear": 14,
+}
+
+# --- Celery (async return grading workers) ---
+# Reuses Redis. Broker/result default to the shared REDIS_URL, then to the
+# compose "redis" service. ALWAYS_EAGER runs tasks inline (tests / no broker).
+CELERY_BROKER_URL = os.environ.get(
+    "CELERY_BROKER_URL", _redis_url or "redis://redis:6379/0"
+)
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "0") == "1"
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# --- AI return grading ---
+# Multi-source grader: VLM (OpenAI-compatible) + perceptual-hash similarity +
+# EXIF metadata + buyer history. "auto" picks gemini when a key is present,
+# else the deterministic mock so local/dev never breaks.
+GRADING_VLM_PROVIDER = os.environ.get("GRADING_VLM_PROVIDER", "auto")
+GRADING_EMBEDDING_PROVIDER = os.environ.get("GRADING_EMBEDDING_PROVIDER", "phash")
+GRADING_VLM_TIMEOUT = float(os.environ.get("GRADING_VLM_TIMEOUT", "30"))
+GRADING_VLM_MAX_IMAGES = int(os.environ.get("GRADING_VLM_MAX_IMAGES", "6"))
+GRADING_REFERENCE_CACHE_TTL = int(os.environ.get("GRADING_REFERENCE_CACHE_TTL", "86400"))
+
+# OpenAI-compatible LLM providers. Adding a provider = a config entry, not code.
+# Gemini is reached via Google's OpenAI-compatibility endpoint.
+LLM_PROVIDERS = {
+    "gemini": {
+        "base_url": os.environ.get(
+            "GEMINI_BASE_URL",
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+        ),
+        "api_key": os.environ.get("GEMINI_API_KEY", ""),
+        "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        "requires_key": True,
+    },
+    "openai": {
+        "base_url": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "api_key": os.environ.get("OPENAI_API_KEY", ""),
+        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "requires_key": True,
+    },
+    "modal": {  # self-hosted vLLM speaks the OpenAI protocol — fill when deployed
+        "base_url": os.environ.get("MODAL_BASE_URL", ""),
+        "api_key": os.environ.get("MODAL_API_KEY", ""),
+        "model": os.environ.get("MODAL_MODEL", ""),
+        "requires_key": False,
+    },
+}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import PhotoPicker from "../components/PhotoPicker";
 import { useToast } from "../components/Toast";
@@ -17,9 +18,12 @@ export default function Orders() {
   const [reason, setReason] = useState("CHANGED_MIND");
   const [untouchedClaim, setUntouchedClaim] = useState(false);
   const [photos, setPhotos] = useState([]);
+  const [photoMetas, setPhotoMetas] = useState([]);
+  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const { push } = useToast();
+  const navigate = useNavigate();
 
   const load = () => api.get("/orders").then(setOrders);
   useEffect(() => {
@@ -39,6 +43,8 @@ export default function Orders() {
   const startReturn = (id) => {
     setReturning(id);
     setPhotos([]);
+    setPhotoMetas([]);
+    setComment("");
     setUntouchedClaim(false);
     setReason("CHANGED_MIND");
   };
@@ -50,10 +56,14 @@ export default function Orders() {
       const fd = new FormData();
       fd.append("reason", reason);
       fd.append("claimed_untouched", untouchedClaim ? "true" : "false");
+      if (comment.trim()) fd.append("comment", comment.trim());
       photos.forEach((f) => fd.append("photos", f));
+      fd.append("metadata", JSON.stringify(photoMetas));
       await api.postForm(`/orders/${id}/return`, fd);
       setReturning(null);
       setPhotos([]);
+      setPhotoMetas([]);
+      setComment("");
       load();
       push("Return scheduled", "success");
     } catch (e) {
@@ -90,14 +100,32 @@ export default function Orders() {
                     Mark delivered (demo)
                   </button>
                 )}
-                {o.state === "DELIVERED" && returning !== o.id && (
-                  <button
-                    className="secondary"
-                    onClick={() => startReturn(o.id)}
-                  >
-                    Return
-                  </button>
-                )}
+                {o.state === "DELIVERED" &&
+                  returning !== o.id &&
+                  o.return_eligible && (
+                    <button
+                      className="secondary"
+                      onClick={() => startReturn(o.id)}
+                    >
+                      Return
+                    </button>
+                  )}
+                {o.state === "DELIVERED" &&
+                  returning !== o.id &&
+                  !o.return_eligible && (
+                    <div
+                      className="row"
+                      style={{ gap: 8, alignItems: "center", margin: 0 }}
+                    >
+                      <span className="muted">Return window closed</span>
+                      <button
+                        className="secondary"
+                        onClick={() => navigate("/resell")}
+                      >
+                        Resell instead
+                      </button>
+                    </div>
+                  )}
                 {returning === o.id && (
                   <div className="card" style={{ padding: 12 }}>
                     <div className="row">
@@ -122,8 +150,19 @@ export default function Orders() {
                         unopened
                       </label>
                     </div>
+                    <textarea
+                      placeholder="Add a comment (optional) — describe the issue"
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      rows={2}
+                      style={{ marginTop: 8, width: "100%" }}
+                    />
                     <div style={{ marginTop: 10 }}>
-                      <PhotoPicker files={photos} onChange={setPhotos} />
+                      <PhotoPicker
+                        files={photos}
+                        onChange={setPhotos}
+                        onMetadata={setPhotoMetas}
+                      />
                     </div>
                     <div className="row" style={{ marginTop: 10 }}>
                       <button

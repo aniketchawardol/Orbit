@@ -82,6 +82,8 @@ class Order(StatefulItem):
     )
     claimed_untouched = models.BooleanField(default=False)
     photos = models.JSONField(default=list, blank=True)  # return-time photos (buyer)
+    return_comment = models.TextField(blank=True)  # buyer's free-text return note
+    delivered_at = models.DateTimeField(blank=True, null=True)  # return-window anchor
 
     class Meta:
         indexes = [models.Index(fields=["state"])]
