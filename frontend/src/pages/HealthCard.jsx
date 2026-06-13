@@ -49,6 +49,50 @@ export default function HealthCard() {
           {unit.storage_cost_accrued}
         </p>
 
+        {unit.routing_recommendation && (
+          <div
+            className="card no-hover"
+            style={{ marginTop: 12, borderColor: "var(--accent2)" }}
+          >
+            <div className="row" style={{ alignItems: "center", gap: 8 }}>
+              <h3 style={{ margin: 0 }}>
+                AI disposition: {unit.routing_recommendation.recommendation}
+              </h3>
+              {unit.routing_recommendation.decided_by && (
+                <span className="badge src">
+                  {unit.routing_recommendation.decided_by === "llm"
+                    ? "LLM"
+                    : "Expected value"}
+                </span>
+              )}
+            </div>
+            {unit.routing_recommendation.confidence != null && (
+              <div className="muted">
+                Confidence:{" "}
+                {Math.round(
+                  (unit.routing_recommendation.confidence || 0) * 100,
+                )}
+                %
+              </div>
+            )}
+            {unit.routing_recommendation.reasoning && (
+              <p style={{ marginTop: 8, marginBottom: 8 }}>
+                {unit.routing_recommendation.reasoning}
+              </p>
+            )}
+            {unit.routing_recommendation.alternatives?.length > 0 && (
+              <div className="muted">
+                Alternatives:{" "}
+                {unit.routing_recommendation.alternatives.map((alt) => (
+                  <span key={alt} className="badge" style={{ marginLeft: 4 }}>
+                    {alt}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <h3>History</h3>
         <ul className="timeline no-hover">
           {unit.events.map((e) => (

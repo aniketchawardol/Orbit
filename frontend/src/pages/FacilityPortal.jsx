@@ -129,17 +129,40 @@ export default function FacilityPortal() {
       <h3>Incoming returns</h3>
       {receivedRecommendation && (
         <div className="card" style={{ marginBottom: 12 }}>
-          <h4>
-            AI Recommendation: {receivedRecommendation.routing.recommendation}
-          </h4>
-          <div className="muted">
-            Confidence:{" "}
-            {Math.round((receivedRecommendation.routing.confidence || 0) * 100)}
-            %
+          <div className="row" style={{ alignItems: "center", gap: 8 }}>
+            <h4 style={{ margin: 0 }}>
+              AI Recommendation: {receivedRecommendation.routing.recommendation}
+            </h4>
+            {receivedRecommendation.routing.decided_by && (
+              <span className="badge src">
+                {receivedRecommendation.routing.decided_by === "llm"
+                  ? "LLM"
+                  : "Expected value"}
+              </span>
+            )}
           </div>
+          {receivedRecommendation.routing.confidence != null && (
+            <div className="muted">
+              Confidence:{" "}
+              {Math.round(
+                (receivedRecommendation.routing.confidence || 0) * 100,
+              )}
+              %
+            </div>
+          )}
           <p style={{ marginTop: 8 }}>
             {receivedRecommendation.routing.reasoning}
           </p>
+          {receivedRecommendation.routing.alternatives?.length > 0 && (
+            <div className="muted" style={{ marginBottom: 8 }}>
+              Alternatives:{" "}
+              {receivedRecommendation.routing.alternatives.map((alt) => (
+                <span key={alt} className="badge" style={{ marginLeft: 4 }}>
+                  {alt}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="row" style={{ gap: 8 }}>
             <button
               onClick={() =>

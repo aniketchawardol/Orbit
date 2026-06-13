@@ -110,3 +110,32 @@ def _run_sync(decision_id):
     ev = ev_subtask(decision_id)
     llm_out = llm_subtask(decision_id)
     finalize_subtask([ev, llm_out], decision_id)
+
+
+def decide_route_now(assessment_id):
+    """Synchronous variant of decide_route.
+
+    Builds the decision and runs EV ∥ LLM inline, returning the finalized
+    RouteDecision (or None). Used as a fallback when a disposition is needed
+    immediately — e.g. facility intake — and the async chain hasn't produced one
+    yet. Idempotent: _create_decision update_or_creates on the assessment.
+    """
+    from grading.models import GradingAssessment
+
+    try:
+        assessment = GradingAssessment.objects.select_related(
+            "unit", "order"
+        ).get(pk=assessment_id)
+    except GradingAssessment.DoesNotExist:
+        return None
+
+    decision = _create_decision(assessment)
+    if decision is None:
+        return None
+
+    _run_sync(decision.id)
+    try:
+        decision.refresh_from_db()
+    except RouteDecision.DoesNotExist:
+        return None
+    return decision

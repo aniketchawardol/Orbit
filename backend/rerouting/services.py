@@ -36,6 +36,71 @@ def recommendation_for(unit):
     )
     if not decision or not decision.route:
         return None
+    return _shape_recommendation(decision)
+
+
+def ensure_recommendation_for(unit):
+    """Like recommendation_for, but compute one synchronously if none is ready.
+
+    The async return->grading->rerouting chain may not have finished by the time
+    a unit is physically received, which would leave the operator with no AI
+    disposition. When no DONE decision exists we run the engine inline against the
+    latest completed grading assessment for this unit, so intake always has a
+    recommendation. Best-effort: any failure falls back to whatever (if anything)
+    recommendation_for can read.
+    """
+    existing = recommendation_for(unit)
+    if existing:
+        return existing
+
+    from grading.models import AssessmentStatus, GradingAssessment
+
+    assessment = (
+        GradingAssessment.objects.filter(unit=unit, status=AssessmentStatus.DONE)
+        .order_by("-created_at")
+        .first()
+    )
+    if assessment is None:
+        # No completed grading yet — finish the most recent pending/running one
+        # inline so we can still route. Rare: async grading has usually completed
+        # long before a physical unit is received.
+        pending = (
+            GradingAssessment.objects.filter(
+                unit=unit,
+                status__in=[AssessmentStatus.PENDING, AssessmentStatus.RUNNING],
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if pending is not None:
+            try:
+                from grading.orchestrator import run_all_sync
+
+                run_all_sync(pending.id)
+                pending.refresh_from_db()
+                if pending.status == AssessmentStatus.DONE:
+                    assessment = pending
+            except Exception:  # noqa: BLE001 — never let grading break intake
+                log.exception("inline grading completion failed for unit %s", unit.id)
+
+    if assessment is None:
+        return None
+
+    try:
+        from .tasks import decide_route_now
+
+        decision = decide_route_now(assessment.id)
+    except Exception:  # noqa: BLE001 — never let routing break intake
+        log.exception("inline rerouting failed for unit %s", unit.id)
+        decision = None
+
+    if decision and decision.route:
+        return _shape_recommendation(decision)
+    return recommendation_for(unit)
+
+
+def _shape_recommendation(decision):
+    """Shape a RouteDecision into the dict the facility/health-card UI expects."""
     ranking = (decision.costs or {}).get("ev", {}).get("ranking", [])
     alternatives = [
         r["route"] for r in ranking if r.get("route") != decision.route

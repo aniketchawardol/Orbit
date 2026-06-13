@@ -356,3 +356,66 @@ class RerouteIntegrationTests(TestCase):
         self.assertIn("ev", decision.costs)
         # EV fallback used (no LLM provider in mock mode).
         self.assertEqual(decision.decided_by, "ev")
+
+    def test_ensure_recommendation_computes_inline_when_async_not_ready(self):
+        """The timing gap: a unit is received before the async rerouting chain
+        has produced a decision. ensure_recommendation_for must compute one
+        inline from the latest DONE grading assessment so intake always shows a
+        disposition."""
+        from grading.models import (
+            AssessmentContext,
+            AssessmentStatus,
+            GradingAssessment,
+        )
+        from .models import RouteChoices, RouteDecision
+        from .services import ensure_recommendation_for, recommendation_for
+
+        _, _, _, unit, _, order = _order_graph()
+        GradingAssessment.objects.create(
+            unit=unit, order=order, context=AssessmentContext.RETURN,
+            status=AssessmentStatus.DONE, quality_score=0.8, fraud_score=0.05,
+            confidence=0.8, suggested_grade="B",
+            vlm_result={"size_class": "small", "fragility": "rigid", "defects": []},
+        )
+
+        # Precondition: the async chain has NOT produced a decision yet.
+        self.assertIsNone(recommendation_for(unit))
+        self.assertFalse(RouteDecision.objects.filter(unit=unit).exists())
+
+        rec = ensure_recommendation_for(unit)
+
+        # A disposition is now available and persisted.
+        self.assertIsNotNone(rec)
+        self.assertIn(rec["recommendation"], RouteChoices.values)
+        self.assertEqual(rec["decided_by"], "ev")
+        self.assertIn("alternatives", rec)
+        self.assertTrue(RouteDecision.objects.filter(unit=unit).exists())
+
+    def test_ensure_recommendation_reuses_existing_decision(self):
+        """When a DONE decision already exists, ensure_recommendation_for must
+        return it without creating a duplicate."""
+        from grading.models import (
+            AssessmentContext,
+            AssessmentStatus,
+            GradingAssessment,
+        )
+        from .models import RouteDecision
+        from .services import ensure_recommendation_for
+        from .tasks import decide_route
+
+        _, _, _, unit, _, order = _order_graph()
+        assessment = GradingAssessment.objects.create(
+            unit=unit, order=order, context=AssessmentContext.RETURN,
+            status=AssessmentStatus.DONE, quality_score=0.8, fraud_score=0.05,
+            confidence=0.8, suggested_grade="B",
+            vlm_result={"size_class": "small", "fragility": "rigid", "defects": []},
+        )
+        decide_route(assessment.id)
+        self.assertEqual(RouteDecision.objects.filter(unit=unit).count(), 1)
+
+        rec = ensure_recommendation_for(unit)
+
+        self.assertIsNotNone(rec)
+        # No duplicate decision was created.
+        self.assertEqual(RouteDecision.objects.filter(unit=unit).count(), 1)
+

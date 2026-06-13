@@ -83,12 +83,13 @@ def receive(request):
         ai_source=graded["source"],
     )
 
-    # Disposition recommendation from the rerouting engine (computed async, LLM ∥
-    # EV, when the return was requested). Stored as a UnitEvent for audit/UI.
+    # Disposition recommendation from the rerouting engine (LLM ∥ EV). Computed
+    # async when the return was requested; if that hasn't finished we compute it
+    # inline here so intake always has a recommendation. Stored as a UnitEvent.
     try:
-        from rerouting.services import recommendation_for
+        from rerouting.services import ensure_recommendation_for
 
-        routing = recommendation_for(unit)
+        routing = ensure_recommendation_for(unit)
         if routing:
             from catalog.models import UnitEvent
 
