@@ -77,7 +77,6 @@ export default function ProductPage() {
             <div
               style={{
                 marginTop: 8,
-                background: "#f3f4f6",
                 padding: 8,
                 borderRadius: 6,
               }}

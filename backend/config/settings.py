@@ -140,11 +140,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# --- AI service (real, behind a toggle) ---
+# --- Legacy mock AI (services/ai.py): deterministic, network-free helpers.
+# Real image-aware grading/routing lives in the grading/ + rerouting/ apps
+# (Gemini via LLM_PROVIDERS/GEMINI_API_KEY). AI_MOCK is kept for tests/back-compat.
 AI_MOCK = os.environ.get("AI_MOCK", "1") == "1"
-AI_SERVICE_URL = os.environ.get("AI_SERVICE_URL", "")
-AI_API_KEY = os.environ.get("AI_API_KEY", "")
-AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", "5"))
 
 # --- Loop business knobs ---
 STORAGE_DAILY_RATE_DEFAULT = 5          # ₹/day
