@@ -68,16 +68,22 @@ def products(request):
 
 def _relist_unit(unit, actor, source=ListingSources.SELLER_RETURN):
     priced = ai.price(unit.product.id, unit.product.mrp, unit.grade or "B")
-    listing = Listing.objects.create(
-        unit=unit,
+    # Every pre-loved item flows through the Next Best Owner engine: open a Dutch
+    # auction + match buyers. The relisting seller becomes owner + lister, so the
+    # sale payout/credit lands on them.
+    from nextowner.services import open_relist_auction
+
+    auction = open_relist_auction(
+        unit,
+        actor,
         source=source,
-        price=priced["est_value"],
+        est_value=priced["est_value"],
         band_lo=priced["band_lo"],
         band_hi=priced["band_hi"],
+        grade=unit.grade or "B",
+        pricing_extra={"source": "seller_relist"},
     )
-    unit.est_value = priced["est_value"]
-    unit.transition(UnitStates.RELISTED, actor=actor, listing_id=listing.id)
-    return listing
+    return auction.listing
 
 
 APPLY_ACTION = {

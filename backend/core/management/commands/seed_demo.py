@@ -29,6 +29,7 @@ from sellerportal.models import RuleActions, SellerRule
 from services import ai
 from rerouting.geo import CITY_COORDS
 from greencredits.logic import award_credits, seed_rewards
+from nextowner.services import open_relist_auction
 
 # Rich catalog seed. Each product carries an extensive marketing description and
 # a structured `attributes` map (brand/material/specs...). The attributes are
@@ -620,7 +621,7 @@ class Command(BaseCommand):
             User.objects.create_user("seller1", password="demo1234", role=Roles.SELLER),
             "Bengaluru",
         )
-        _locate(
+        facility = _locate(
             User.objects.create_user(
                 "facility1", password="demo1234", role=Roles.FACILITY
             ),
@@ -687,26 +688,27 @@ class Command(BaseCommand):
                 buyer=reseller, listing=listing, state=OrderStates.DELIVERED
             )
 
-        # --- one active USER_RESALE listing ---
+        # --- one active USER_RESALE auction (Next Best Owner) ---
         p = products[10]
         graded = ai.grade(p.id)
         priced = ai.price(p.id, p.mrp, graded["grade"])
         unit = ItemUnit.objects.create(
             product=p,
-            state=UnitStates.RELISTED,
+            state=UnitStates.SOLD,
             owner=reseller,
             grade=graded["grade"],
             grade_confidence=graded["confidence"],
             est_value=priced["est_value"],
         )
-        Listing.objects.create(
-            unit=unit,
+        open_relist_auction(
+            unit,
+            reseller,
             source=ListingSources.USER_RESALE,
-            price=priced["est_value"],
+            est_value=priced["est_value"],
             band_lo=priced["band_lo"],
             band_hi=priced["band_hi"],
-            state=ListingStates.ACTIVE,
-            lister=reseller,
+            grade=graded["grade"],
+            pricing_extra={"source": "seed_user_resale"},
         )
 
         # --- units pending return pickup (facility incoming queue) ---
@@ -745,26 +747,28 @@ class Command(BaseCommand):
                 storage_cost_accrued=rng.randint(0, 60),
             )
 
-        # --- one unit near liquidation (watchlist drama) ---
+        # --- one unit near liquidation (watchlist drama) -> facility auction ---
         p = products[18]
         graded = ai.grade(p.id)
         priced = ai.price(p.id, p.mrp, graded["grade"])
         unit = ItemUnit.objects.create(
             product=p,
-            state=UnitStates.RELISTED,
+            state=UnitStates.AT_FACILITY,
             grade=graded["grade"],
             grade_confidence=graded["confidence"],
             est_value=priced["est_value"],
             arrived_at_facility=now,
             storage_cost_accrued=int(priced["est_value"] * 0.9),
         )
-        Listing.objects.create(
-            unit=unit,
+        open_relist_auction(
+            unit,
+            facility,
             source=ListingSources.FACILITY_RELIST,
-            price=priced["est_value"],
+            est_value=priced["est_value"],
             band_lo=priced["band_lo"],
             band_hi=priced["band_hi"],
-            state=ListingStates.ACTIVE,
+            grade=graded["grade"],
+            pricing_extra={"source": "seed_facility_relist"},
         )
 
         # --- seller rule ---

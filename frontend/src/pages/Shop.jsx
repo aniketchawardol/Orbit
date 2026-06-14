@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Package, Search } from "../components/icons";
+import ResaleAlerts from "../components/ResaleAlerts";
 
 function MediaCard({ p }) {
   const src =
@@ -71,6 +72,7 @@ export default function Shop() {
 
   return (
     <div className="page">
+      <ResaleAlerts />
       <div className="row" style={{ marginBottom: 18 }}>
         <h2 style={{ margin: 0 }}>Shop</h2>
         <div className="nav-search right" style={{ maxWidth: 320 }}>

@@ -16,7 +16,7 @@ from django.conf import settings  # noqa: E402
 from django.test import Client  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from marketplace.models import Listing, Order  # noqa: E402
+from marketplace.models import Order  # noqa: E402
 
 PASS = "demo1234"
 
@@ -36,25 +36,38 @@ def main():
     c = Client()
     assert c.login(username="rahul", password=PASS), "rahul login failed"
 
-    # find a DELIVERED order owned by rahul to resell with photos
-    order = (
-        Order.objects.filter(buyer__username="rahul", state="DELIVERED")
-        .select_related("listing__unit")
-        .first()
+    # Self-seed a fresh DELIVERED order for rahul so this smoke is idempotent and
+    # never collides with the "already listed" guard on reruns (each run resells
+    # a brand-new unit it owns).
+    from django.contrib.auth import get_user_model
+    from catalog.models import ItemUnit, Product, UnitStates
+    from marketplace.models import Listing, ListingSources, ListingStates, OrderStates
+
+    rahul = get_user_model().objects.get(username="rahul")
+    product = Product.objects.order_by("id").first()
+    assert product, "no products — reseed?"
+    unit = ItemUnit.objects.create(
+        product=product, state=UnitStates.SOLD, owner=rahul
     )
-    assert order, "no DELIVERED order for rahul — reseed?"
+    sold_listing = Listing.objects.create(
+        unit=unit, source=ListingSources.NEW, price=product.mrp, state=ListingStates.SOLD
+    )
+    order = Order.objects.create(
+        buyer=rahul, listing=sold_listing, state=OrderStates.DELIVERED
+    )
 
     r = c.post(
-        "/api/resale",
+        "/api/nextowner/resell",
         {"order_id": order.id, "photos": [png("a.png"), png("b.png")]},
     )
-    print(f"[1] resale with photos -> {r.status_code}")
+    print(f"[1] resell with photos -> {r.status_code}")
     assert r.status_code == 201, r.content[:300]
-    data = r.json()
-    assert len(data["photos"]) == 2, data["photos"]
+    body = r.json()
+    # Eager mode returns the live auction; the listing carries the photo URLs.
+    assert "auction" in body, f"expected eager auction, got {body}"
+    data = body["auction"]
     assert len(data["photo_urls"]) == 2, data
     assert all(u.startswith(settings.MEDIA_URL) for u in data["photo_urls"]), data["photo_urls"]
-    print(f"    photos={data['photos']}")
     print(f"    photo_urls={data['photo_urls']}")
 
     # each URL must actually serve
@@ -64,7 +77,10 @@ def main():
         assert resp.status_code == 200
 
     # the public product page must include photo_urls on the listing
-    listing = Listing.objects.get(pk=data["id"])
+    from nextowner.models import ResaleAuction
+
+    auction = ResaleAuction.objects.select_related("listing__unit").get(pk=data["id"])
+    listing = auction.listing
     r = c.get(f"/api/products/{listing.unit.product_id}")
     pl = [l for l in r.json()["listings"] if l["id"] == listing.id]
     assert pl and pl[0]["photo_urls"] == data["photo_urls"], "photo_urls missing on product page"
