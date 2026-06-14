@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import { useAuth } from "./auth";
 import { useCountUp, useScrolled } from "./lib/motion";
-import { Search, Sprout, LogOut, Menu, X, User } from "./components/icons";
+import { Sprout, LogOut, Menu, X, User } from "./components/icons";
 import Shop from "./pages/Shop";
 import ProductPage from "./pages/ProductPage";
 import Login from "./pages/Login";
@@ -20,6 +20,7 @@ import FacilityPortal from "./pages/FacilityPortal";
 import HealthCard from "./pages/HealthCard";
 import PreLoved from "./pages/PreLoved";
 import Rewards from "./pages/Rewards";
+import Profile from "./pages/Profile";
 
 function Guard({ need, children }) {
   const { user, loading } = useAuth();
@@ -35,7 +36,6 @@ function NavBar() {
   const loc = useLocation();
   const scrolled = useScrolled(12);
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
 
   const credits = useCountUp(user?.green_credits?.balance ?? 0);
 
@@ -77,12 +77,6 @@ function NavBar() {
       match: (p) => p.startsWith("/facility"),
     });
 
-  const submitSearch = (e) => {
-    e.preventDefault();
-    const term = q.trim();
-    nav(term ? `/?q=${encodeURIComponent(term)}` : "/");
-  };
-
   return (
     <nav className={`nav${scrolled ? " scrolled" : ""}`}>
       <button
@@ -101,19 +95,6 @@ function NavBar() {
         <span className="wordmark">Orbit</span>
       </button>
 
-      <form className="nav-search" onSubmit={submitSearch}>
-        <Search size={18} style={{ color: "var(--text-muted)" }} />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search products…"
-          aria-label="Search products"
-        />
-        <button type="submit" aria-label="Search">
-          <Search size={16} />
-        </button>
-      </form>
-
       <button
         className="nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
@@ -121,6 +102,8 @@ function NavBar() {
       >
         {open ? <X size={20} /> : <Menu size={20} />}
       </button>
+
+      <span className="spacer" />
 
       <div className={`tab-list${open ? " open" : ""}`}>
         {tabs.map((t) => (
@@ -209,6 +192,14 @@ export default function App() {
           element={
             <Guard>
               <Rewards />
+            </Guard>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <Guard>
+              <Profile />
             </Guard>
           }
         />

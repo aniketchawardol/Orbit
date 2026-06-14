@@ -23,7 +23,19 @@ def _precompute_return_prevention(user):
 
 
 def _user_payload(user):
-    payload = {"id": user.id, "username": user.username, "role": user.role}
+    payload = {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "email": user.email or "",
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "city": user.city or "",
+        "lat": user.lat,
+        "lng": user.lng,
+        "profile": user.profile or {},
+        "date_joined": user.date_joined.isoformat() if user.date_joined else None,
+    }
     try:
         # green_credits is a OneToOne relation created by greencredits app; include balance if present
         payload["green_credits"] = {"balance": user.green_credits.balance}

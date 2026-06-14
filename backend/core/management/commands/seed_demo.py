@@ -7,6 +7,7 @@ Idempotent: running twice is a no-op (guards on username existence).
 import io
 import os
 import random
+from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -835,6 +836,7 @@ class Command(BaseCommand):
             grade=graded["grade"],
             grade_confidence=graded["confidence"],
             est_value=priced["est_value"],
+            purchased_at=timezone.now() - timedelta(days=300),
         )
         open_relist_auction(
             unit,
@@ -895,6 +897,7 @@ class Command(BaseCommand):
             est_value=priced["est_value"],
             arrived_at_facility=now,
             storage_cost_accrued=int(priced["est_value"] * 0.9),
+            purchased_at=now - timedelta(days=60),
         )
         open_relist_auction(
             unit,

@@ -67,9 +67,35 @@ def unit_health_card(request, pk):
         return Response(status=status.HTTP_404_NOT_FOUND)
     # Buyers must not see the internal AI disposition recommendation — that's
     # a facility-only signal. Opt out so the field is omitted entirely.
-    return Response(
-        ItemUnitSerializer(unit, context={"include_routing": False}).data
+    data = ItemUnitSerializer(unit, context={"include_routing": False}).data
+
+    # The price shoppers actually see on the site is the live listing/auction
+    # price, NOT the internal `est_value`. Surface it so the card can show the
+    # MRP (struck through) next to the current price, like any storefront.
+    from nextowner.models import AuctionStatus, ResaleAuction
+
+    auction = (
+        ResaleAuction.objects.filter(unit=unit, status=AuctionStatus.ACTIVE)
+        .order_by("-created_at")
+        .first()
     )
+    if auction:
+        data["current_price"] = auction.current_price
+    else:
+        listing = (
+            Listing.objects.filter(unit=unit, state="ACTIVE")
+            .order_by("-created_at")
+            .first()
+        )
+        data["current_price"] = listing.price if listing else None
+
+    from .warranty import warranty_remaining_label
+
+    data["warranty_remaining"] = warranty_remaining_label(
+        unit.product, unit.purchased_at
+    )
+
+    return Response(data)
 
 
 @api_view(["GET"])

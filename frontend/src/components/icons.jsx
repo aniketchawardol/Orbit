@@ -235,3 +235,17 @@ export const Sparkles = (p) => (
     <path d="M19 14l.7 1.8L21.5 17l-1.8.7L19 19.5l-.7-1.8L16.5 17l1.8-.7z" />
   </Svg>
 );
+
+export const Mail = (p) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3 7 9 6 9-6" />
+  </Svg>
+);
+
+export const Calendar = (p) => (
+  <Svg {...p}>
+    <rect x="3" y="4.5" width="18" height="17" rx="2" />
+    <path d="M8 2.5v4M16 2.5v4M3 9.5h18" />
+  </Svg>
+);

@@ -54,6 +54,10 @@ class ItemUnit(StatefulItem):
     grade_confidence = models.FloatField(blank=True, null=True)
     untouched = models.BooleanField(default=False)
     est_value = models.PositiveIntegerField(blank=True, null=True, help_text="₹")
+    # When this physical unit was originally purchased (warranty anchor). Set on
+    # resale-from-order from the originating order's delivery/purchase date, so
+    # the Health Card can show how much manufacturer warranty is left.
+    purchased_at = models.DateTimeField(blank=True, null=True)
     arrived_at_facility = models.DateTimeField(blank=True, null=True)
     storage_cost_accrued = models.PositiveIntegerField(default=0, help_text="₹")
     owner = models.ForeignKey(

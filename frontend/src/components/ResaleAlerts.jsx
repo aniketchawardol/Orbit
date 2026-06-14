@@ -101,7 +101,7 @@ export default function ResaleAlerts() {
                 </span>
                 {" · "}
                 <span className="badge success" style={{ margin: 0 }}>
-                  +{green_credit_bonus} green
+                  +{auction.green_credits ?? green_credit_bonus} green
                 </span>
                 {" · "}
                 {Math.round(match.score * 100)}% match

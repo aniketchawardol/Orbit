@@ -1057,6 +1057,48 @@ button.danger:hover,
   margin-left: 6px;
 }
 
+/* Health Card: storefront-style price + warranty */
+.hc-price {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.hc-price-now {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--price);
+  line-height: 1;
+  font-feature-settings: "tnum" 1;
+}
+.hc-price-was {
+  font-size: 16px;
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-feature-settings: "tnum" 1;
+}
+.hc-price-off {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success);
+}
+.hc-warranty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(6, 125, 98, 0.12);
+  border: 1px solid rgba(6, 125, 98, 0.32);
+  color: var(--success);
+  font-size: 13.5px;
+}
+.hc-warranty strong {
+  font-weight: 800;
+}
+
 /* Card action buttons share width */
 .card-actions {
   display: flex;
@@ -1609,10 +1651,6 @@ tr:last-child td {
     transform: none;
     box-shadow: none;
   }
-  .nav .nav-search {
-    order: 5;
-    max-width: none;
-  }
 }
 
 /* --- Return prevention: size picker + confirm modal --- */
@@ -1726,3 +1764,96 @@ tr:last-child td {
     transform: translateY(8px) scale(0.98);
   }
 }
+
+/* ============================================================================
+   Profile page
+   ========================================================================== */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--brand-orange),
+    var(--brand-orange-deep)
+  );
+  box-shadow:
+    var(--glow-orange-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.profile-id {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.profile-id h2 {
+  margin: 0 0 6px;
+}
+.profile-blurb {
+  margin: 10px 0 0;
+  max-width: 54ch;
+  font-size: 0.9rem;
+}
+.profile-credits {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  border-radius: var(--radius-lg);
+  background: rgba(6, 125, 98, 0.1);
+  border: 1px solid rgba(6, 125, 98, 0.25);
+}
+.profile-credits-figure {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--success);
+  font-feature-settings: "tnum" 1;
+}
+.profile-credits-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.profile-card {
+  padding: 16px 18px;
+}
+.profile-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
+  color: var(--brand-orange-deep);
+}
+.profile-card .spec-list {
+  margin-top: 12px;
+}
+@media (max-width: 560px) {
+  .profile-credits {
+    align-self: stretch;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+

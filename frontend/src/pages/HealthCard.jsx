@@ -58,15 +58,43 @@ export default function HealthCard() {
           <span className="badge">{unit.state}</span>
         </div>
 
+        {unit.current_price != null && (
+          <div className="hc-price">
+            <span className="hc-price-now">₹{unit.current_price}</span>
+            {unit.product.mrp > unit.current_price && (
+              <>
+                <span className="hc-price-was">₹{unit.product.mrp}</span>
+                <span className="hc-price-off">
+                  {Math.round(
+                    100 - (unit.current_price * 100) / unit.product.mrp,
+                  )}
+                  % off
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
+        {unit.warranty_remaining && (
+          <div className="hc-warranty">
+            <ShieldCheck size={15} />
+            <span>
+              <strong>{unit.warranty_remaining}</strong> of warranty left
+            </span>
+          </div>
+        )}
+
         <div className="stat-grid">
           <div className="stat-tile">
             <div className="v">{conf}</div>
             <div className="k">Grade confidence</div>
           </div>
-          <div className="stat-tile">
-            <div className="v">₹{unit.est_value ?? "—"}</div>
-            <div className="k">Estimated value</div>
-          </div>
+          {unit.current_price == null && (
+            <div className="stat-tile">
+              <div className="v">₹{unit.est_value ?? "—"}</div>
+              <div className="k">Estimated value</div>
+            </div>
+          )}
           <div className="stat-tile">
             <div className="v">₹{unit.storage_cost_accrued}</div>
             <div className="k">Storage cost so far</div>

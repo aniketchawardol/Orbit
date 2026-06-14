@@ -22,7 +22,6 @@ export default function ProductPage() {
   const nav = useNavigate();
   const [p, setP] = useState(null);
   const [related, setRelated] = useState([]);
-  const [fitHint, setFitHint] = useState("");
   // Return prevention: personalized size guidance + size selection.
   const [fitGuide, setFitGuide] = useState(null);
   const [selectedSize, setSelectedSize] = useState("");
@@ -34,13 +33,6 @@ export default function ProductPage() {
   const load = () => api.get(`/products/${id}`).then(setP);
   useEffect(() => {
     load();
-    // load fit-check hint
-    api
-      .get(`/products/${id}/fitcheck`)
-      .then((res) => {
-        if (res && res.hint) setFitHint(res.hint);
-      })
-      .catch(() => {});
     // load same-category products for the carousel
     api
       .get(`/products/${id}/related`)
@@ -169,29 +161,6 @@ export default function ProductPage() {
                   </div>
                 ))}
               </dl>
-            </div>
-          )}
-          {fitHint && (
-            <div
-              className="disposition"
-              style={{
-                marginTop: 12,
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-              }}
-            >
-              <Sparkles
-                size={16}
-                style={{
-                  flexShrink: 0,
-                  marginTop: 2,
-                  color: "var(--brand-orange-deep)",
-                }}
-              />
-              <div>
-                <strong>Fit hint</strong> {fitHint}
-              </div>
             </div>
           )}
           {fitGuide?.sized && (

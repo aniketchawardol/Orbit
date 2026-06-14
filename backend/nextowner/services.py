@@ -43,6 +43,13 @@ def start_resale_from_order(user, order, photo_paths, age_months=None):
         anchor = order.delivered_at or order.created_at
         age_months = max(0.0, (timezone.now() - anchor).days / 30.0) if anchor else 0.0
 
+    # Anchor the warranty clock to when the seller originally received the item,
+    # so the Health Card can show how much manufacturer warranty is still left.
+    purchased_at = order.delivered_at or order.created_at
+    if purchased_at and unit.purchased_at != purchased_at:
+        unit.purchased_at = purchased_at
+        unit.save(update_fields=["purchased_at"])
+
     rr = ResaleRequest.objects.create(
         seller=user,
         unit=unit,

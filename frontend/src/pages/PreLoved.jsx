@@ -13,16 +13,6 @@ import {
   Sparkles,
 } from "../components/icons";
 
-// Green-credit bonus from the live price. Responses already include the
-// authoritative value on alerts; this is just optimistic UI between polls.
-const MAX_BONUS = 40;
-const bonusAt = (a) =>
-  a.ceiling > a.floor
-    ? Math.round(
-        ((a.ceiling - a.current_price) / (a.ceiling - a.floor)) * MAX_BONUS,
-      )
-    : 0;
-
 export default function PreLoved() {
   const [items, setItems] = useState([]);
   const { user, reload } = useAuth();
@@ -61,7 +51,10 @@ export default function PreLoved() {
     }
   };
 
+  // Recommended items get their own rail; exclude them from the "all items"
+  // grid below so the same auction never shows up twice.
   const recommended = items.filter((a) => a.recommended);
+  const others = items.filter((a) => !a.recommended);
 
   return (
     <div className="page">
@@ -103,34 +96,38 @@ export default function PreLoved() {
           </span>
           <div>No pre-loved listings yet — check back soon.</div>
         </div>
+      ) : loading ? (
+        <div className="grid stagger">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="media-card skel">
+              <div className="media-img skeleton" />
+              <div className="panel">
+                <div className="line skeleton" />
+                <div className="line short skeleton" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        <>
-          {!loading && recommended.length > 0 && (
-            <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Recycle size={18} /> All pre-loved items
-            </h3>
-          )}
-          <div className="grid stagger">
-            {loading
-              ? Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="media-card skel">
-                    <div className="media-img skeleton" />
-                    <div className="panel">
-                      <div className="line skeleton" />
-                      <div className="line short skeleton" />
-                    </div>
-                  </div>
-                ))
-              : items.map((a) => (
-                  <AuctionCard
-                    key={a.id}
-                    a={a}
-                    you={user?.username}
-                    onBuy={buy}
-                  />
-                ))}
-          </div>
-        </>
+        others.length > 0 && (
+          <>
+            {recommended.length > 0 && (
+              <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Recycle size={18} /> All pre-loved items
+              </h3>
+            )}
+            <div className="grid stagger">
+              {others.map((a) => (
+                <AuctionCard
+                  key={a.id}
+                  a={a}
+                  you={user?.username}
+                  onBuy={buy}
+                />
+              ))}
+            </div>
+          </>
+        )
       )}
     </div>
   );
@@ -141,7 +138,7 @@ function AuctionCard({ a, you, recommended = false, onBuy }) {
   const src =
     a.photo_urls?.[0] || a.product.image_url || a.product.thumbnail_url;
   const price = useCountUp(a.current_price);
-  const bonus = bonusAt(a);
+  const green = a.green_credits ?? 0;
   const save = a.product.mrp
     ? Math.round(100 - (a.current_price * 100) / a.product.mrp)
     : 0;
@@ -203,9 +200,9 @@ function AuctionCard({ a, you, recommended = false, onBuy }) {
               <span className="mrp">₹{a.product.mrp}</span>
             )}
           </span>
-          {!done && bonus > 0 && (
+          {!done && green > 0 && (
             <span className="badge success" style={{ margin: 0 }}>
-              <Sprout size={13} /> +{bonus} green
+              <Sprout size={13} /> +{green} green
             </span>
           )}
         </div>

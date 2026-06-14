@@ -10,3 +10,4 @@ django-storages[s3]>=1.14
 celery>=5.3
 openai>=1.0
 networkx>=3.2
+python-dateutil>=2.8
