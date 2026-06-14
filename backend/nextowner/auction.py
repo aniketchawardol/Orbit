@@ -214,7 +214,7 @@ def open_auction_for_unit(
     """
     grade = grade or unit.grade or "C"
     est = int(est_value if est_value is not None else (unit.est_value or 0))
-    bounds = auction_bounds(est)
+    bounds = pricing.auction_bounds(est)
     ceiling, floor = bounds["ceiling"], bounds["floor"]
     lo = int(band_lo) if band_lo is not None else floor
     hi = int(band_hi) if band_hi is not None else ceiling

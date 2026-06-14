@@ -46,6 +46,9 @@ class AuctionSerializer(serializers.ModelSerializer):
             "category": p.category,
             "mrp": p.mrp,
             "origin": p.origin,
+            # Catalog photo — the card's thumbnail fallback when a relist carries
+            # no resale-specific photos of its own.
+            "image_url": p.image.url if p.image else None,
         }
 
     def get_photo_urls(self, obj):

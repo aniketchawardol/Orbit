@@ -15,7 +15,7 @@ urlpatterns = [
 ]
 
 if not settings.USE_S3:
-    # Local file storage → Django serves /media/ (any DEBUG value; nginx proxies it).
+    # Local file storage -> Django serves /media/ (any DEBUG value; nginx proxies it).
     # With USE_S3=1, media URLs point straight at S3/CloudFront — nothing to serve here.
     from django.views.static import serve as media_serve
 

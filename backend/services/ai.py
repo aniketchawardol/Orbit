@@ -44,12 +44,12 @@ def _mock_price(mrp, grade):
 
 
 def grade(product_id, untouched=False, image_paths=None):
-    """→ {grade, confidence, source}"""
+    """-> {grade, confidence, source}"""
     return _mock_grade(product_id, untouched, image_paths)
 
 
 def price(product_id, mrp, grade_letter):
-    """→ {est_value, band_lo, band_hi, source}"""
+    """-> {est_value, band_lo, band_hi, source}"""
     return _mock_price(mrp, grade_letter)
 
 

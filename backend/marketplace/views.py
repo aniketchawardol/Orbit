@@ -201,7 +201,7 @@ def request_return(request, pk):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def advance_order(request, pk):
-    """Demo helper: move an order one step forward (e.g. PLACED→DELIVERED)."""
+    """Demo helper: move an order one step forward (e.g. PLACED->DELIVERED)."""
     try:
         order = Order.objects.get(pk=pk, buyer=request.user)
     except Order.DoesNotExist:

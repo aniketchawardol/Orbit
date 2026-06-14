@@ -7,7 +7,7 @@ from .models import Listing, Order, OrderStates
 
 
 def photo_urls(paths):
-    """Relative media paths → URLs that work on local volume AND S3."""
+    """Relative media paths -> URLs that work on local volume AND S3."""
     out = []
     for p in paths or []:
         try:
