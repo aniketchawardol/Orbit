@@ -30,7 +30,26 @@ def return_deadline(order):
     return anchor + timedelta(days=return_window_days(category))
 
 
+def buyer_started_resale(order) -> bool:
+    """True once the buyer has handed this unit to resale.
+
+    Keyed on a ResaleRequest filed by *this* buyer for *this* unit, so it stays
+    correct even after the unit is later re-bought by someone else (its state
+    cycles back to SOLD under a new owner). Authoritative even if the order row
+    is still DELIVERED — e.g. orders resold before resale started settling the
+    originating order.
+    """
+    from nextowner.models import ResaleRequest
+
+    return ResaleRequest.objects.filter(
+        unit_id=order.listing.unit_id, seller_id=order.buyer_id
+    ).exists()
+
+
 def is_return_eligible(order) -> bool:
+    # Once the buyer has resold the unit, it's no longer theirs to return.
+    if buyer_started_resale(order):
+        return False
     deadline = return_deadline(order)
     if deadline is None:
         return True

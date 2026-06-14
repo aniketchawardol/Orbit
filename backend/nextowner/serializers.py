@@ -24,6 +24,7 @@ class AuctionSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
     photo_urls = serializers.SerializerMethodField()
     grade = serializers.CharField(source="unit.grade", read_only=True)
+    unit_id = serializers.IntegerField(source="unit.id", read_only=True)
     seller_name = serializers.CharField(source="seller.username", read_only=True)
     buyer_name = serializers.CharField(source="buyer.username", read_only=True, default=None)
     n_matches = serializers.SerializerMethodField()
@@ -33,8 +34,8 @@ class AuctionSerializer(serializers.ModelSerializer):
         fields = [
             "id", "status", "ceiling", "floor", "current_price", "tier", "max_tier",
             "step_pct", "interval_seconds", "next_step_at", "pricing", "grade",
-            "product", "photo_urls", "seller_name", "buyer_name", "n_matches",
-            "created_at",
+            "unit_id", "product", "photo_urls", "seller_name", "buyer_name",
+            "n_matches", "created_at",
         ]
 
     def get_product(self, obj):

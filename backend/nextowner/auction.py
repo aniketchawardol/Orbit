@@ -191,6 +191,91 @@ def start_auction_for_assessment(assessment):
     return auction
 
 
+def open_auction_for_unit(
+    unit,
+    seller,
+    *,
+    source,
+    photos=None,
+    est_value=None,
+    band_lo=None,
+    band_hi=None,
+    grade=None,
+    pricing_extra=None,
+):
+    """Synchronously list + match + open a Dutch auction for an ALREADY-graded
+    unit (facility relist / seller auto-relist), which—unlike a user resale—has
+    no async grading handoff to price it.
+
+    The relisting actor (`seller`) becomes BOTH the unit owner and the listing
+    lister, so the sale payout + RESELL credit go to them on buy. Pricing reuses
+    the unit's existing valuation (`est_value` / band from `ai.price`); the
+    auction range is the usual premium-above / reserve-below band around it.
+    """
+    grade = grade or unit.grade or "C"
+    est = int(est_value if est_value is not None else (unit.est_value or 0))
+    bounds = auction_bounds(est)
+    ceiling, floor = bounds["ceiling"], bounds["floor"]
+    lo = int(band_lo) if band_lo is not None else floor
+    hi = int(band_hi) if band_hi is not None else ceiling
+    photos = list(photos or [])
+    interval = settings.NEXTOWNER_AUCTION_INTERVAL_SECONDS
+
+    with transaction.atomic():
+        unit.grade = grade
+        unit.est_value = est
+        unit.owner = seller
+        unit.save(update_fields=["grade", "est_value", "owner", "updated_at"])
+
+        listing = Listing.objects.create(
+            unit=unit,
+            source=source,
+            price=ceiling,  # current ask; descends with the auction
+            band_lo=lo,
+            band_hi=hi,
+            photos=photos,
+            lister=seller,
+            state=ListingStates.ACTIVE,
+        )
+        unit.transition(UnitStates.RELISTED, actor=seller, listing_id=listing.id)
+
+        auction = ResaleAuction.objects.create(
+            listing=listing,
+            unit=unit,
+            seller=seller,
+            ceiling=ceiling,
+            floor=floor,
+            current_price=ceiling,
+            step_pct=settings.NEXTOWNER_AUCTION_STEP_PCT,
+            interval_seconds=interval,
+            tier=0,
+            max_tier=settings.NEXTOWNER_AUCTION_MAX_TIER,
+            status=AuctionStatus.ACTIVE,
+            next_step_at=timezone.now() + timedelta(seconds=interval),
+            pricing={
+                "grade": grade,
+                "est_value": est,
+                "fair_low": lo,
+                "fair_high": hi,
+                **(pricing_extra or {}),
+            },
+        )
+
+        _persist_edges(auction, matching.top_buyers(listing))
+        _alert_tier(auction, tier=0)
+
+    log.info(
+        "relist auction %s opened (%s): grade=%s ceiling=%s floor=%s buyers=%s",
+        auction.id,
+        source,
+        grade,
+        ceiling,
+        floor,
+        auction.edges.count(),
+    )
+    return auction
+
+
 def step(auction):
     """Lower the price one notch and widen the alert to the next buyer tier.
 

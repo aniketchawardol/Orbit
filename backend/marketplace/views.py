@@ -9,9 +9,8 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from catalog.models import ItemUnit, UnitStates
+from catalog.models import UnitStates
 from core.uploads import save_photos
-from services import ai
 from greencredits.logic import award_credits
 
 from .models import (
@@ -22,8 +21,8 @@ from .models import (
     OrderStates,
     ReturnReasons,
 )
-from .returns import is_return_eligible, return_deadline
-from .serializers import ListingSerializer, OrderSerializer
+from .returns import buyer_started_resale, is_return_eligible, return_deadline
+from .serializers import OrderSerializer
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +79,35 @@ def place_order(request):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
+    Pre-loved items are auction-backed (Next Best Owner): if the listing has an
+    associated Dutch auction we delegate to that engine so the buyer pays the
+    current descending price and earns the green-credit bonus, and the auction is
+    closed atomically. Plain (NEW) listings keep the simple flow below.
+    """
+    listing_id = request.data.get("listing_id")
+
+    # Auction-backed? Hand off to the Next Best Owner buy (price-drop bonus +
+    # payout + auction close, all row-locked there).
+    from nextowner.models import ResaleAuction
+
+    auction = (
+        ResaleAuction.objects.filter(listing_id=listing_id)
+        .only("id")
+        .first()
+    )
+    if auction is not None:
+        from nextowner import auction as auction_mod
+
+        result = auction_mod.buy(auction.id, request.user)
+        if not result.get("ok"):
+            return Response(
+                {"detail": result.get("detail", "Could not complete purchase.")},
+                status=status.HTTP_409_CONFLICT,
+            )
+        order = Order.objects.select_related("listing__unit__product").get(
+            pk=result["order_id"]
+        )
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
     with transaction.atomic():
         listing = (
@@ -145,6 +173,12 @@ def request_return(request, pk):
     if order.state != OrderStates.DELIVERED:
         return Response(
             {"detail": f"Cannot return from state {order.state}."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    # Already handed to resale -> not the buyer's to return anymore.
+    if buyer_started_resale(order):
+        return Response(
+            {"detail": "This item has been resold and can no longer be returned."},
             status=status.HTTP_409_CONFLICT,
         )
     # Return window closed -> no return, but the item can still be resold.
@@ -228,91 +262,3 @@ def advance_order(request, pk):
     order.transition(nxt, actor=request.user, demo=True)
     return Response(OrderSerializer(order).data)
 
-
-@api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
-@parser_classes([MultiPartParser, FormParser, JSONParser])
-def resale(request):
-    """GET: my resale listings. POST: create one from a delivered order
-    (multipart: order_id, photos[], optional price)."""
-    if request.method == "GET":
-        qs = (
-            Listing.objects.filter(
-                lister=request.user, source=ListingSources.USER_RESALE
-            )
-            .select_related("unit__product")
-            .order_by("-created_at")
-        )
-        return Response(ListingSerializer(qs, many=True).data)
-
-    order_id = request.data.get("order_id")
-    try:
-        order = Order.objects.select_related("listing__unit__product").get(
-            pk=order_id, buyer=request.user, state=OrderStates.DELIVERED
-        )
-    except Order.DoesNotExist:
-        return Response(
-            {"detail": "Order not found or not delivered."},
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
-    # The SAME physical unit re-enters the marketplace (history preserved).
-    unit = order.listing.unit
-    product = unit.product
-
-    if unit.owner_id != request.user.id:
-        return Response(
-            {"detail": "You no longer own this item."},
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    if unit.listings.filter(
-        state__in=[ListingStates.ACTIVE, ListingStates.RESERVED]
-    ).exists():
-        return Response(
-            {"detail": "This item is already listed."},
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    try:
-        photo_paths = save_photos(request.FILES.getlist("photos"), "resale")
-    except ValueError as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    graded = ai.grade(product.id, untouched=False, image_paths=photo_paths)
-    priced = ai.price(product.id, product.mrp, graded["grade"])
-
-    chosen = int(request.data.get("price") or priced["est_value"])
-    chosen = max(min(chosen, priced["band_hi"]), priced["band_lo"])  # clamp to band
-
-    unit.grade = graded["grade"]
-    unit.grade_confidence = graded["confidence"]
-    unit.est_value = priced["est_value"]
-    unit.save()
-
-    listing = Listing.objects.create(
-        unit=unit,
-        source=ListingSources.USER_RESALE,
-        price=chosen,
-        band_lo=priced["band_lo"],
-        band_hi=priced["band_hi"],
-        photos=photo_paths,
-        lister=request.user,
-    )
-    unit.transition(UnitStates.RELISTED, actor=request.user, listing_id=listing.id)
-    order.transition(OrderStates.SETTLED, actor=request.user, resold=True)
-    # Green credits: award for reselling
-    award_credits(request.user, 30, "RESELL", f"Resold {product.title}", listing.id)
-
-    # Emit payout released event (demo): 92% payout to Amazon Pay
-    payout_amount = int(listing.price * 0.92)
-    from catalog.models import UnitEvent
-
-    UnitEvent.objects.create(
-        unit=unit,
-        type="PAYOUT_RELEASED",
-        actor=request.user,
-        payload={"amount": payout_amount, "fee": int(listing.price * 0.08)},
-    )
-
-    return Response(ListingSerializer(listing).data, status=status.HTTP_201_CREATED)

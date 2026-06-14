@@ -5,88 +5,151 @@ import PhotoPicker from "../components/PhotoPicker";
 import { useToast } from "../components/Toast";
 import { Recycle, Sparkles, Tag } from "../components/icons";
 
-export default function Resell() {
-  const { reload } = useAuth();
+// Next Best Owner resale — list an item for the P2P matching engine. Two modes:
+//   linked   → resell a past platform order (has a reference image for grading)
+//   external → a brand-new item brought from outside (graded in quality mode)
+function NextOwnerResell({ orders, onListed }) {
   const { push } = useToast();
-  const [orders, setOrders] = useState([]);
-  const [listings, setListings] = useState([]);
-  const [selling, setSelling] = useState(null); // order id being photographed
+  const [mode, setMode] = useState("linked"); // "linked" | "external"
+  const [orderId, setOrderId] = useState("");
+  const [form, setForm] = useState({
+    title: "",
+    category: "electronics",
+    mrp: "",
+    original_price: "",
+    brand: "",
+    age_months: "",
+  });
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const load = () => {
-    api
-      .get("/orders")
-      .then((all) => setOrders(all.filter((o) => o.state === "DELIVERED")));
-    api.get("/resale").then(setListings);
-  };
-  useEffect(() => {
-    load();
-  }, []);
-
-  // Helper to fetch the unit healthcard (events) for a listing
-  const fetchPayoutForListing = async (unitId) => {
-    try {
-      const u = await api.get(`/units/${unitId}/healthcard`);
-      // find the most recent PAYOUT_RELEASED event
-      const payout = (u.events || []).find((e) => e.type === "PAYOUT_RELEASED");
-      return payout;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  const startResell = (orderId) => {
-    setSelling(orderId);
-    setPhotos([]);
-    setMsg("");
-  };
-
-  const confirmResell = async (orderId) => {
-    setMsg("");
+  async function submit() {
+    if (!photos.length) return push("Add at least one photo", "error");
+    if (mode === "linked" && !orderId)
+      return push("Pick an order to resell", "error");
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("order_id", orderId);
       photos.forEach((f) => fd.append("photos", f));
-      const l = await api.postForm("/resale", fd);
-      push(`Listed at ₹${l.price} (Grade ${l.grade})`, "success");
-      setSelling(null);
+      if (mode === "linked") fd.append("order_id", orderId);
+      else Object.entries(form).forEach(([k, v]) => v && fd.append(k, v));
+      const res = await api.postForm("/nextowner/resell", fd);
+      // async (worker): status PENDING → poll demo/results for the auction.
+      // eager (dev): res.auction is already present.
+      push(
+        res.auction
+          ? "Listed — auction is live!"
+          : "Grading… we'll match buyers shortly",
+        "success",
+      );
       setPhotos([]);
-      load();
-      reload();
+      setOrderId("");
+      onListed?.(res);
     } catch (e) {
       push(e.message || "Resell failed", "error");
     } finally {
       setBusy(false);
     }
-  };
-
-  function PayoutCell({ unitId }) {
-    const [payout, setPayout] = useState(null);
-    useEffect(() => {
-      let mounted = true;
-      api
-        .get(`/units/${unitId}/healthcard`)
-        .then((u) => {
-          if (!mounted) return;
-          const p = (u.events || []).find((e) => e.type === "PAYOUT_RELEASED");
-          setPayout(p || null);
-        })
-        .catch(() => {});
-      return () => (mounted = false);
-    }, [unitId]);
-    if (!payout) return null;
-    return (
-      <div>
-        <div style={{ fontSize: 12 }}>Payout: ₹{payout.payload?.amount}</div>
-        <div style={{ fontSize: 11 }} className="muted">
-          Fee: ₹{payout.payload?.fee}
-        </div>
-      </div>
-    );
   }
+
+  return (
+    <div className="card" style={{ padding: 16 }}>
+      <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+        <button
+          className={mode === "linked" ? "" : "secondary"}
+          onClick={() => setMode("linked")}
+        >
+          <Tag size={15} /> From a past order
+        </button>
+        <button
+          className={mode === "external" ? "" : "secondary"}
+          onClick={() => setMode("external")}
+        >
+          <Recycle size={15} /> Brand-new item
+        </button>
+      </div>
+
+      {mode === "linked" ? (
+        <select value={orderId} onChange={(e) => setOrderId(e.target.value)}>
+          <option value="">Pick a delivered order…</option>
+          {orders.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.listing.product.title} — ₹{o.listing.price}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          <input
+            placeholder="Title"
+            value={form.title}
+            onChange={set("title")}
+          />
+          <input
+            placeholder="Category (electronics, apparel…)"
+            value={form.category}
+            onChange={set("category")}
+          />
+          <input
+            placeholder="MRP ₹"
+            type="number"
+            value={form.mrp}
+            onChange={set("mrp")}
+          />
+          <input
+            placeholder="Paid ₹ (original price)"
+            type="number"
+            value={form.original_price}
+            onChange={set("original_price")}
+          />
+          <input
+            placeholder="Brand (optional)"
+            value={form.brand}
+            onChange={set("brand")}
+          />
+          <input
+            placeholder="Age in months (optional)"
+            type="number"
+            value={form.age_months}
+            onChange={set("age_months")}
+          />
+        </div>
+      )}
+
+      <div className="muted" style={{ margin: "12px 0 6px" }}>
+        Photos — the grader scores from these.
+      </div>
+      <PhotoPicker files={photos} onChange={setPhotos} />
+
+      <div className="row" style={{ marginTop: 12 }}>
+        <button onClick={submit} disabled={busy}>
+          <Sparkles size={15} /> {busy ? "Grading…" : "Grade & find next owner"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function Resell() {
+  const { reload } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [auctions, setAuctions] = useState([]);
+
+  const load = () => {
+    api
+      .get("/orders")
+      .then((all) => setOrders(all.filter((o) => o.state === "DELIVERED")))
+      .catch(() => {});
+    // My resale auctions (Next Best Owner). Replaces the old /resale listings.
+    api
+      .get("/nextowner/resell")
+      .then(setAuctions)
+      .catch(() => {});
+  };
+  useEffect(() => {
+    load();
+  }, []);
 
   return (
     <div className="page">
@@ -94,72 +157,31 @@ export default function Resell() {
         <Recycle size={22} /> Resell
       </h2>
       <p className="muted">
-        One tap: Orbit grades it, prices it inside a fair band, lists it, and a
-        courier picks it up. No strangers, no haggling.
+        One tap: Orbit grades it, prices it inside a fair band, lists it to the
+        shoppers who want it most, and a courier picks it up. No strangers, no
+        haggling.
       </p>
 
       <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Sparkles size={16} /> Eligible (delivered) orders
+        <Sparkles size={16} /> Grade &amp; find next owner
       </h3>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Paid</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td>{o.listing.product.title}</td>
-                <td>₹{o.listing.price}</td>
-                <td>
-                  {selling !== o.id ? (
-                    <button onClick={() => startResell(o.id)}>
-                      <Recycle size={15} /> Resell this
-                    </button>
-                  ) : (
-                    <div className="card" style={{ padding: 12 }}>
-                      <div className="muted" style={{ marginBottom: 8 }}>
-                        Add a few photos — AI grades from these.
-                      </div>
-                      <PhotoPicker files={photos} onChange={setPhotos} />
-                      <div className="row" style={{ marginTop: 10 }}>
-                        <button
-                          onClick={() => confirmResell(o.id)}
-                          disabled={busy}
-                        >
-                          {busy ? "Grading…" : "Grade & list it"}
-                        </button>
-                        <button
-                          className="secondary"
-                          onClick={() => setSelling(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {orders.length === 0 && (
-              <tr>
-                <td colSpan={3} className="muted">
-                  Nothing delivered yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Hand it to the P2P matching engine — we grade it, open a price, and
+        alert the shoppers who want it most. List a past order or a brand-new
+        item.
+      </p>
+      <NextOwnerResell
+        orders={orders}
+        onListed={() => {
+          reload?.();
+          load();
+        }}
+      />
 
       <h3
         style={{ marginTop: 28, display: "flex", alignItems: "center", gap: 8 }}
       >
-        <Tag size={16} /> My resale listings
+        <Tag size={16} /> My resale auctions
       </h3>
       <div className="table-wrap">
         <table>
@@ -168,37 +190,40 @@ export default function Resell() {
               <th>Item</th>
               <th>Grade</th>
               <th>Price</th>
-              <th>Band</th>
-              <th>State</th>
+              <th>Status</th>
+              <th>Matches</th>
             </tr>
           </thead>
           <tbody>
-            {listings.map((l) => (
-              <tr key={l.id}>
-                <td>{l.product.title}</td>
+            {auctions.map((a) => (
+              <tr key={a.id}>
+                <td>{a.product.title}</td>
                 <td>
-                  <span className={`badge grade-${l.grade}`}>{l.grade}</span>
+                  {a.grade ? (
+                    <span className={`badge grade-${a.grade}`}>{a.grade}</span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
-                <td>₹{l.price}</td>
-                <td className="muted">
-                  ₹{l.band_lo}–₹{l.band_hi}
-                </td>
+                <td>₹{a.current_price}</td>
                 <td>
-                  <span className="badge">{l.state}</span>
-                  {/* Payout info (if any) */}
-                  {l.unit_id && (
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      {/* show most recent payout if available (lazy fetch) */}
-                      <PayoutCell unitId={l.unit_id} />
+                  <span className="badge">{a.status}</span>
+                  {a.status === "SOLD" && a.buyer_name && (
+                    <div
+                      className="muted"
+                      style={{ fontSize: 11, marginTop: 4 }}
+                    >
+                      Sold to {a.buyer_name}
                     </div>
                   )}
                 </td>
+                <td className="muted">{a.n_matches}</td>
               </tr>
             ))}
-            {listings.length === 0 && (
+            {auctions.length === 0 && (
               <tr>
                 <td colSpan={5} className="muted">
-                  No resale listings yet.
+                  No resale auctions yet — list one above.
                 </td>
               </tr>
             )}

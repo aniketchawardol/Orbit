@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from .models import ItemUnit, Product
 from .serializers import ItemUnitSerializer, ProductSerializer
 from marketplace.serializers import ListingSerializer
-from marketplace.models import Listing, ListingSources
+from marketplace.models import Listing
 from services import ai
 
 
@@ -75,12 +75,25 @@ def unit_health_card(request, pk):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def preloved_list(request):
-    """Return active pre-loved listings (source != NEW)."""
-    qs = Listing.objects.filter(state="ACTIVE").exclude(source=ListingSources.NEW).select_related('unit__product').order_by('-created_at')
-    # Allow filters
-    category = request.query_params.get('category')
-    grade = request.query_params.get('grade')
-    q = request.query_params.get('q')
+    """Active pre-loved listings as Next-Best-Owner auctions.
+
+    Every pre-loved item flows through the Dutch-auction engine, so we return
+    auction cards (price = current_price, with the grading/match metadata).
+    Each card carries `recommended: bool` — true when the signed-in user is an
+    alerted (matched) buyer for that auction, so the frontend can surface a
+    "Recommended for you" rail. Logged-out users get all cards, none recommended.
+    """
+    from nextowner.models import AuctionStatus, MatchEdge, ResaleAuction
+    from nextowner.serializers import AuctionSerializer
+
+    qs = (
+        ResaleAuction.objects.filter(status=AuctionStatus.ACTIVE)
+        .select_related("unit__product", "listing", "seller", "buyer")
+        .order_by("-created_at")
+    )
+    category = request.query_params.get("category")
+    grade = request.query_params.get("grade")
+    q = request.query_params.get("q")
     if category:
         qs = qs.filter(unit__product__category=category)
     if grade:
@@ -88,8 +101,28 @@ def preloved_list(request):
     if q:
         from django.db.models import Q
 
-        qs = qs.filter(Q(unit__product__title__icontains=q) | Q(unit__product__description__icontains=q))
-    return Response(ListingSerializer(qs[:60], many=True).data)
+        qs = qs.filter(
+            Q(unit__product__title__icontains=q)
+            | Q(unit__product__description__icontains=q)
+        )
+    qs = list(qs[:60])
+
+    # Which of these is the current buyer alerted (matched) to?
+    recommended_ids = set()
+    user = request.user
+    if user.is_authenticated and qs:
+        recommended_ids = set(
+            MatchEdge.objects.filter(
+                buyer=user,
+                alerted=True,
+                auction__in=qs,
+            ).values_list("auction_id", flat=True)
+        )
+
+    data = AuctionSerializer(qs, many=True).data
+    for row in data:
+        row["recommended"] = row["id"] in recommended_ids
+    return Response(data)
 
 
 @api_view(["GET"])

@@ -132,16 +132,22 @@ def relist(request, pk):
         )
 
     priced = ai.price(unit.product.id, unit.product.mrp, unit.grade or "B")
-    listing = Listing.objects.create(
-        unit=unit,
+    # Every pre-loved item flows through the Next Best Owner engine: open a Dutch
+    # auction + match buyers. The facility user becomes owner + lister (so the
+    # sale payout/credit lands on the facility account).
+    from nextowner.services import open_relist_auction
+
+    est = int(request.data.get("price") or priced["est_value"])
+    open_relist_auction(
+        unit,
+        request.user,
         source=ListingSources.FACILITY_RELIST,
-        price=int(request.data.get("price") or priced["est_value"]),
+        est_value=est,
         band_lo=priced["band_lo"],
         band_hi=priced["band_hi"],
+        grade=unit.grade or "B",
+        pricing_extra={"source": "facility_relist"},
     )
-    unit.est_value = priced["est_value"]
-    unit.save()
-    unit.transition(UnitStates.RELISTED, actor=request.user, listing_id=listing.id)
     return Response(ItemUnitSerializer(unit).data, status=status.HTTP_201_CREATED)
 
 

@@ -1,40 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useToast } from "../components/Toast";
 import { Link } from "react-router-dom";
-import { Activity, ShoppingCart, Package, Recycle } from "../components/icons";
+import { useCountUp } from "../lib/motion";
+import {
+  Activity,
+  ShoppingCart,
+  Package,
+  Recycle,
+  Sprout,
+  Sparkles,
+} from "../components/icons";
+
+// Green-credit bonus from the live price. Responses already include the
+// authoritative value on alerts; this is just optimistic UI between polls.
+const MAX_BONUS = 40;
+const bonusAt = (a) =>
+  a.ceiling > a.floor
+    ? Math.round(
+        ((a.ceiling - a.current_price) / (a.ceiling - a.floor)) * MAX_BONUS,
+      )
+    : 0;
 
 export default function PreLoved() {
-  const [listings, setListings] = useState([]);
+  const [items, setItems] = useState([]);
   const { user, reload } = useAuth();
   const { push } = useToast();
   const [loading, setLoading] = useState(true);
+  const timer = useRef(null);
+
+  const load = (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
+    return api
+      .get("/listings/preloved")
+      .then((res) => setItems(res))
+      .catch(() => {})
+      .finally(() => showSpinner && setLoading(false));
+  };
 
   useEffect(() => {
-    setLoading(true);
-    api
-      .get("/listings/preloved")
-      .then((res) => setListings(res))
-      .finally(() => setLoading(false));
+    load(true);
+    // Poll so the descending price + growing green reward stay live while the
+    // page is open (the worker advances each auction on its own timer).
+    timer.current = setInterval(() => load(false), 3000);
+    return () => clearInterval(timer.current);
   }, []);
 
-  const buy = async (listingId) => {
+  const buy = async (auctionId) => {
     if (!user) return window.location.assign("/login");
-    const prevBal = user?.green_credits?.balance || 0;
     try {
-      await api.post("/orders/place", { listing_id: listingId });
-      push("Order placed", "success");
-      try {
-        const me = await reload();
-        const newBal = me?.green_credits?.balance || 0;
-        if (newBal > prevBal)
-          push(`+${newBal - prevBal} green credits`, "success");
-      } catch (e) {}
+      const r = await api.post(`/nextowner/auctions/${auctionId}/buy`);
+      push(`Bought ₹${r.price} · +${r.green_credits} green credits`, "success");
+      reload?.();
+      load(false);
     } catch (e) {
-      push(e.message || "Order failed", "error");
+      // 409 → already sold / you own it. Refetch so the card updates.
+      push(e.message || "Already sold", "error");
+      load(false);
     }
   };
+
+  const recommended = items.filter((a) => a.recommended);
 
   return (
     <div className="page">
@@ -45,7 +72,31 @@ export default function PreLoved() {
         Pre-Loved Shop
       </h2>
 
-      {!loading && listings.length === 0 ? (
+      {/* Recommended-for-you rail: auctions where the matching engine has alerted
+          the current buyer. Hidden when logged out or nothing matches. */}
+      {!loading && recommended.length > 0 && (
+        <section style={{ marginBottom: 28 }}>
+          <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Sparkles size={18} /> Recommended for you
+          </h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Matched to your taste and budget
+          </p>
+          <div className="grid stagger">
+            {recommended.map((a) => (
+              <AuctionCard
+                key={a.id}
+                a={a}
+                you={user?.username}
+                recommended
+                onBuy={buy}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!loading && items.length === 0 ? (
         <div className="empty">
           <span className="medallion">
             <Recycle size={28} />
@@ -53,91 +104,136 @@ export default function PreLoved() {
           <div>No pre-loved listings yet — check back soon.</div>
         </div>
       ) : (
-        <div className="grid stagger">
-          {loading
-            ? Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="media-card skel">
-                  <div className="media-img skeleton" />
-                  <div className="panel">
-                    <div className="line skeleton" />
-                    <div className="line short skeleton" />
-                  </div>
-                </div>
-              ))
-            : listings.map((l) => {
-                const src =
-                  (l.photo_urls && l.photo_urls[0]) ||
-                  l.product.image_url ||
-                  l.product.thumbnail_url;
-                const save = Math.round(100 - (l.price * 100) / l.product.mrp);
-                return (
-                  <div key={l.id} className="media-card sheen">
-                    <Link
-                      to={`/p/${l.product.id}`}
-                      style={{ position: "absolute", inset: 0, zIndex: 1 }}
-                      aria-label={l.product.title}
-                    />
-                    {src ? (
-                      <img
-                        className="media-img"
-                        src={src}
-                        alt={l.product.title}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="media-fallback">
-                        <Package size={48} />
-                      </div>
-                    )}
-                    <div className="corner left">
-                      <span className={`badge grade-${l.grade} float`}>
-                        Grade {l.grade}
-                      </span>
-                      {save > 0 && (
-                        <span className="badge success float">
-                          Save {save}%
-                        </span>
-                      )}
-                    </div>
-                    <div className="panel" style={{ zIndex: 2 }}>
-                      <h3>{l.product.title}</h3>
-                      <div
-                        className="row"
-                        style={{ gap: 8, justifyContent: "space-between" }}
-                      >
-                        <span>
-                          <span className="price">₹{l.price}</span>
-                          <span className="mrp">₹{l.product.mrp}</span>
-                        </span>
-                        <span className="badge src" style={{ margin: 0 }}>
-                          {l.source}
-                        </span>
-                      </div>
-                      <div className="card-actions" style={{ marginTop: 10 }}>
-                        <button
-                          className="buy"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            buy(l.id);
-                          }}
-                        >
-                          <ShoppingCart size={15} /> Buy
-                        </button>
-                        <a
-                          className="button green"
-                          href={`/unit/${l.unit_id}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Activity size={15} /> Health
-                        </a>
-                      </div>
+        <>
+          {!loading && recommended.length > 0 && (
+            <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Recycle size={18} /> All pre-loved items
+            </h3>
+          )}
+          <div className="grid stagger">
+            {loading
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="media-card skel">
+                    <div className="media-img skeleton" />
+                    <div className="panel">
+                      <div className="line skeleton" />
+                      <div className="line short skeleton" />
                     </div>
                   </div>
-                );
-              })}
+                ))
+              : items.map((a) => (
+                  <AuctionCard
+                    key={a.id}
+                    a={a}
+                    you={user?.username}
+                    onBuy={buy}
+                  />
+                ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AuctionCard({ a, you, recommended = false, onBuy }) {
+  const done = a.status === "SOLD" || a.status === "EXPIRED";
+  const src =
+    a.photo_urls?.[0] || a.product.image_url || a.product.thumbnail_url;
+  const price = useCountUp(a.current_price);
+  const bonus = bonusAt(a);
+  const save = a.product.mrp
+    ? Math.round(100 - (a.current_price * 100) / a.product.mrp)
+    : 0;
+  const mineToSell = a.seller_name && a.seller_name === you;
+
+  return (
+    <div className="media-card sheen" style={{ opacity: done ? 0.65 : 1 }}>
+      <Link
+        to={`/p/${a.product.id}`}
+        style={{ position: "absolute", inset: 0, zIndex: 1 }}
+        aria-label={a.product.title}
+      />
+      {src ? (
+        <img
+          className="media-img"
+          src={src}
+          alt={a.product.title}
+          loading="lazy"
+        />
+      ) : (
+        <div className="media-fallback">
+          <Package size={48} />
         </div>
       )}
+
+      <div className="corner left">
+        {a.grade && (
+          <span className={`badge grade-${a.grade} float`}>
+            Grade {a.grade}
+          </span>
+        )}
+        {recommended && (
+          <span className="badge success float">
+            <Sparkles size={12} /> For you
+          </span>
+        )}
+        {!done && save > 0 && (
+          <span className="badge success float">Save {save}%</span>
+        )}
+        {a.status === "SOLD" && (
+          <span className="badge success float">Sold</span>
+        )}
+        {a.status === "EXPIRED" && <span className="badge float">Expired</span>}
+      </div>
+
+      <div className="panel" style={{ zIndex: 2 }}>
+        <h3>{a.product.title}</h3>
+        <div
+          className="row"
+          style={{
+            gap: 8,
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
+        >
+          <span>
+            <span className="price">₹{price}</span>
+            {a.product.mrp > a.current_price && (
+              <span className="mrp">₹{a.product.mrp}</span>
+            )}
+          </span>
+          {!done && bonus > 0 && (
+            <span className="badge success" style={{ margin: 0 }}>
+              <Sprout size={13} /> +{bonus} green
+            </span>
+          )}
+        </div>
+
+        {!done && (
+          <div className="card-actions" style={{ marginTop: 10 }}>
+            <button
+              className="buy"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onBuy(a.id);
+              }}
+              disabled={mineToSell}
+              title={mineToSell ? "You're selling this item" : undefined}
+            >
+              <ShoppingCart size={15} /> Buy ₹{a.current_price}
+            </button>
+            <a
+              className="button green"
+              href={`/unit/${a.unit_id}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Activity size={15} /> Health
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
