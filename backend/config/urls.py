@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/facility/", include("facility.urls")),
     path("api/rerouting/", include("rerouting.urls")),
     path("api/nextowner/", include("nextowner.urls")),
+    path("api/", include("returnprevention.urls")),
     path("", include("greencredits.urls")),
 ]
 

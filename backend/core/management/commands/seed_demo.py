@@ -183,6 +183,8 @@ PRODUCTS = [
             "closure": "Lace-up",
             "gender": "Unisex",
             "available_sizes": "UK 6-11",
+            "size_type": "shoe_uk",
+            "size_options": ["6", "7", "8", "9", "10", "11"],
             "warranty": "90 days",
         },
     },
@@ -207,6 +209,8 @@ PRODUCTS = [
             "closure": "Lace-up",
             "gender": "Men",
             "available_sizes": "UK 6-10",
+            "size_type": "shoe_uk",
+            "size_options": ["6", "7", "8", "9", "10"],
             "use": "Running / training",
         },
     },
@@ -231,6 +235,8 @@ PRODUCTS = [
             "style": "Derby",
             "gender": "Men",
             "available_sizes": "UK 6-11",
+            "size_type": "shoe_uk",
+            "size_options": ["6", "7", "8", "9", "10", "11"],
             "occasion": "Formal",
         },
     },
@@ -254,6 +260,8 @@ PRODUCTS = [
             "closure": "Slip-on",
             "gender": "Men",
             "available_sizes": "UK 6-10",
+            "size_type": "shoe_uk",
+            "size_options": ["6", "7", "8", "9", "10"],
             "use": "Casual",
         },
     },
@@ -279,6 +287,8 @@ PRODUCTS = [
             "closure": "Button & zip fly",
             "gender": "Men",
             "available_sizes": "28-38 waist",
+            "size_type": "waist",
+            "size_options": ["28", "30", "32", "34", "36", "38"],
             "care": "Machine wash cold",
         },
     },
@@ -303,6 +313,8 @@ PRODUCTS = [
             "sleeve": "Half",
             "gender": "Men",
             "available_sizes": "S-XXL",
+            "size_type": "top",
+            "size_options": ["S", "M", "L", "XL", "XXL"],
             "care": "Machine wash cold",
         },
     },
@@ -327,6 +339,8 @@ PRODUCTS = [
             "pockets": "Zippered side",
             "gender": "Men",
             "available_sizes": "S-XXL",
+            "size_type": "top",
+            "size_options": ["S", "M", "L", "XL", "XXL"],
             "care": "Machine wash",
         },
     },
@@ -351,6 +365,8 @@ PRODUCTS = [
             "sleeve": "Full",
             "gender": "Men",
             "available_sizes": "38-44",
+            "size_type": "shirt",
+            "size_options": ["38", "40", "42", "44"],
             "finish": "Wrinkle-resistant",
             "care": "Machine wash",
         },
@@ -527,6 +543,88 @@ PRODUCTS = [
             "use": "Kitchen",
         },
     },
+    # --- Phone + cases: order-history compatibility demo (appended last so the
+    #     index-based order slices above stay valid). ---
+    {
+        "title": "Apple iPhone 15",
+        "category": "electronics",
+        "mrp": 79999,
+        "image": "iphone15.jpg",
+        "stock": 5,
+        "description": (
+            "The iPhone 15 with the Dynamic Island, a 48MP main camera and USB-C. "
+            "A durable colour-infused glass and aluminium design, the A16 Bionic "
+            "chip for all-day performance, and a Super Retina XDR display that's "
+            "brilliant indoors and out."
+        ),
+        "attributes": {
+            "brand": "Apple",
+            "model": "iPhone 15",
+            "color": "Black",
+            "storage": "128 GB",
+            "display": "6.1\" Super Retina XDR",
+            "chip": "A16 Bionic",
+            "port": "USB-C",
+            "warranty": "1 year",
+        },
+    },
+    {
+        "title": "iPhone 14 Silicone Case",
+        "category": "accessories",
+        "mrp": 1299,
+        "image": "iphone14_cover.jpg",
+        "stock": 5,
+        "description": (
+            "A soft-touch silicone back case precision-moulded for the iPhone 14. "
+            "A microfibre lining protects the finish, raised edges guard the "
+            "screen and camera, and all buttons and ports stay easy to reach."
+        ),
+        "attributes": {
+            "brand": "Apple",
+            "type": "Phone case",
+            "compatible_model": "iPhone 14",
+            "color": "Midnight",
+            "material": "Silicone",
+        },
+    },
+    {
+        "title": "iPhone 15 Silicone Case",
+        "category": "accessories",
+        "mrp": 1499,
+        "image": "iphone15_cover.jpg",
+        "stock": 5,
+        "description": (
+            "A soft-touch silicone back case precision-moulded for the iPhone 15. "
+            "A microfibre lining protects the finish, raised edges guard the "
+            "screen and camera, and all buttons and ports stay easy to reach."
+        ),
+        "attributes": {
+            "brand": "Apple",
+            "type": "Phone case",
+            "compatible_model": "iPhone 15",
+            "color": "Storm Blue",
+            "material": "Silicone",
+        },
+    },
+    {
+        "title": "Samsung Galaxy S23 Clear Case",
+        "category": "accessories",
+        "mrp": 299,
+        "image": "samsungss23_cover.jpg",
+        "stock": 5,
+        "description": (
+            "A slim transparent case tailored for the Samsung Galaxy S23. "
+            "Anti-yellowing TPU shows off the phone's colour while raised bezels "
+            "protect the screen and rear cameras from scuffs and drops."
+        ),
+        "attributes": {
+            "brand": "Spigen",
+            "type": "Phone case",
+            "compatible_model": "Galaxy S23",
+            "color": "Clear",
+            "material": "TPU",
+        },
+    },
 ]
 
 FIRST_NAMES = ["aarav", "diya", "kabir", "meera", "rohan", "sana", "vivaan", "zara"]
@@ -635,6 +733,24 @@ class Command(BaseCommand):
             for i, n in enumerate(FIRST_NAMES)
         ]
 
+        # --- size profiles (powers the apparel/footwear fit guide) ---
+        # User.profile["sizes"] keyed by size dimension: waist (jeans), top
+        # (S-XXL garments), shirt (collar), shoe_uk. The fit guide reads these to
+        # recommend a size and warn on a mismatched pick.
+        buyer.profile = {"sizes": {"waist": "32", "top": "M", "shirt": "40", "shoe_uk": "9"}}
+        buyer.save(update_fields=["profile"])
+        reseller.profile = {"sizes": {"waist": "34", "top": "L", "shirt": "42", "shoe_uk": "10"}}
+        reseller.save(update_fields=["profile"])
+        _SIZE_CHARTS = [
+            {"waist": "30", "top": "S", "shirt": "38", "shoe_uk": "7"},
+            {"waist": "36", "top": "XL", "shirt": "44", "shoe_uk": "11"},
+            {"waist": "32", "top": "M", "shirt": "40", "shoe_uk": "8"},
+            {"waist": "34", "top": "L", "shirt": "42", "shoe_uk": "9"},
+        ]
+        for i, b in enumerate(extra_buyers):
+            b.profile = {"sizes": _SIZE_CHARTS[i % len(_SIZE_CHARTS)]}
+            b.save(update_fields=["profile"])
+
         # --- products + NEW listings ---
         products = []
         for idx, item in enumerate(PRODUCTS):
@@ -650,13 +766,16 @@ class Command(BaseCommand):
                 ),
             )
             products.append(p)
-            unit = ItemUnit.objects.create(product=p, state=UnitStates.NEW)
-            Listing.objects.create(
-                unit=unit,
-                source=ListingSources.NEW,
-                price=p.mrp,
-                state=ListingStates.ACTIVE,
-            )
+            # Stock = `stock` NEW listings (default 1). Bump it for products we
+            # want comfortably in stock for the demo (e.g. the phone + cases).
+            for _ in range(item.get("stock", 1)):
+                unit = ItemUnit.objects.create(product=p, state=UnitStates.NEW)
+                Listing.objects.create(
+                    unit=unit,
+                    source=ListingSources.NEW,
+                    price=p.mrp,
+                    state=ListingStates.ACTIVE,
+                )
 
         # --- orders in various states for buyer1 ---
         for i, p in enumerate(products[:6]):
@@ -671,6 +790,23 @@ class Command(BaseCommand):
                 i % 3
             ]
             Order.objects.create(buyer=buyer, listing=listing, state=state)
+
+        # --- buyer1 already owns an iPhone 15 (drives accessory-compatibility:
+        #     an iPhone 14 case is incompatible, an iPhone 15 case fits). ---
+        iphone = next((p for p in products if p.title == "Apple iPhone 15"), None)
+        if iphone is not None:
+            unit = ItemUnit.objects.create(
+                product=iphone, state=UnitStates.SOLD, owner=buyer
+            )
+            listing = Listing.objects.create(
+                unit=unit,
+                source=ListingSources.NEW,
+                price=iphone.mrp,
+                state=ListingStates.SOLD,
+            )
+            Order.objects.create(
+                buyer=buyer, listing=listing, state=OrderStates.DELIVERED
+            )
 
         # --- delivered orders for rahul (resale candidates) ---
         for p in products[6:10]:
