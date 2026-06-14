@@ -45,7 +45,7 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "id", "listing", "state", "return_reason", "claimed_untouched",
+            "id", "listing", "state", "chosen_size", "return_reason", "claimed_untouched",
             "return_comment", "photos", "photo_urls", "delivered_at",
             "return_eligible", "return_deadline", "prevention_offer", "created_at",
         ]

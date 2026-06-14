@@ -9,6 +9,16 @@ async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Build an Error that also carries the HTTP status and parsed JSON body, so
+// callers can branch on e.status / read structured fields (e.g. e.data.warnings)
+// while existing code keeps using e.message.
+function httpError(data, status) {
+  const err = new Error(data?.detail || `Request failed (${status})`);
+  err.status = status;
+  err.data = data;
+  return err;
+}
+
 async function request(path, { method = "GET", body } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (method !== "GET") headers["X-CSRFToken"] = getCookie("csrftoken") || "";
@@ -29,14 +39,14 @@ async function request(path, { method = "GET", body } = {}) {
           if (attempt < maxAttempts) await sleep(200 * Math.pow(2, attempt));
           else {
             const data = await res.json().catch(() => null);
-            throw new Error(data?.detail || `Request failed (${res.status})`);
+            throw httpError(data, res.status);
           }
           continue;
         }
         if (res.status === 204) return null;
         const data = await res.json().catch(() => null);
         if (!res.ok) {
-          throw new Error(data?.detail || `Request failed (${res.status})`);
+          throw httpError(data, res.status);
         }
         return data;
       } catch (err) {
@@ -62,7 +72,7 @@ async function request(path, { method = "GET", body } = {}) {
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(data?.detail || `Request failed (${res.status})`);
+    throw httpError(data, res.status);
   }
   return data;
 }
@@ -77,7 +87,7 @@ async function requestForm(path, formData) {
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(data?.detail || `Request failed (${res.status})`);
+    throw httpError(data, res.status);
   }
   return data;
 }

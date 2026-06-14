@@ -1,11 +1,25 @@
 from django.contrib.auth import authenticate, login, logout
 from django.core.exceptions import ObjectDoesNotExist
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Roles, User
+
+log = logging.getLogger(__name__)
+
+
+def _precompute_return_prevention(user):
+    """Best-effort: warm accessory-compatibility verdicts in parallel on login."""
+    try:
+        from returnprevention.tasks import precompute_for_user
+
+        precompute_for_user.delay(user.id)
+    except Exception:  # noqa: BLE001 — a broker hiccup must never block auth
+        log.exception("could not enqueue return-prevention precompute for %s", user.id)
 
 
 def _user_payload(user):
@@ -37,6 +51,7 @@ def register(request):
         )
     user = User.objects.create_user(username=username, password=password, role=role)
     login(request, user)
+    _precompute_return_prevention(user)
     return Response(_user_payload(user), status=status.HTTP_201_CREATED)
 
 
@@ -53,6 +68,7 @@ def login_view(request):
             {"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED
         )
     login(request, user)
+    _precompute_return_prevention(user)
     return Response(_user_payload(user))
 
 

@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { useToast } from "../components/Toast";
 import { useTilt } from "../lib/motion";
 import ProductCarousel from "../components/ProductCarousel";
+import ConfirmModal from "../components/ConfirmModal";
 import {
   ShieldCheck,
   Sparkles,
@@ -22,6 +23,11 @@ export default function ProductPage() {
   const [p, setP] = useState(null);
   const [related, setRelated] = useState([]);
   const [fitHint, setFitHint] = useState("");
+  // Return prevention: personalized size guidance + size selection.
+  const [fitGuide, setFitGuide] = useState(null);
+  const [selectedSize, setSelectedSize] = useState("");
+  // Pending order awaiting "Buy anyway" confirmation (size/compatibility warning).
+  const [pendingBuy, setPendingBuy] = useState(null);
   const { push } = useToast();
   const tilt = useTilt(5);
 
@@ -42,25 +48,74 @@ export default function ProductPage() {
       .catch(() => setRelated([]));
   }, [id]);
 
+  // Personalized size guide (apparel/footwear) — also warms the accessory
+  // compatibility cache server-side. Requires auth, so only fetch when logged in.
+  useEffect(() => {
+    setFitGuide(null);
+    setSelectedSize("");
+    if (!user) return;
+    api
+      .get(`/products/${id}/fitguide`)
+      .then((res) => {
+        if (!res || !res.sized) return;
+        setFitGuide(res);
+        if (res.recommended_size) setSelectedSize(res.recommended_size);
+      })
+      .catch(() => {});
+  }, [id, user]);
+
+  // Core order placement; `ack` skips the warning gate on the second attempt.
+  const placeOrder = async (listingId, ack) => {
+    const prevBal = user?.green_credits?.balance || 0;
+    await api.post("/orders/place", {
+      listing_id: listingId,
+      chosen_size: selectedSize,
+      ack,
+    });
+    push("Order placed — check Orders tab", "success");
+    load();
+    // refresh auth payload to update green credits counter in header
+    try {
+      await reload();
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      const me = await api.get("/auth/me");
+      const newBal = me.user?.green_credits?.balance || 0;
+      if (newBal > prevBal)
+        push(`+${newBal - prevBal} green credits added`, "success");
+    } catch (e) {}
+  };
+
   const buy = async (listingId) => {
     if (!user) return nav("/login");
-    const prevBal = user?.green_credits?.balance || 0;
+    if (fitGuide?.sized && !selectedSize) {
+      push(`Please select a ${fitGuide.size_label || "size"} first`, "error");
+      return;
+    }
     try {
-      await api.post("/orders/place", { listing_id: listingId });
-      push("Order placed — check Orders tab", "success");
-      load();
-      // refresh auth payload to update green credits counter in header
-      try {
-        await reload();
-      } catch (e) {
-        /* ignore */
+      await placeOrder(listingId, false);
+    } catch (e) {
+      // 409: backend flagged a wrong size or incompatible accessory.
+      if (e.status === 409 && e.data?.warnings?.length) {
+        setPendingBuy({
+          listingId,
+          warnings: e.data.warnings.map((w) => w.message),
+          recommended: e.data.recommended_size || "",
+        });
+        return;
       }
-      try {
-        const me = await api.get("/auth/me");
-        const newBal = me.user?.green_credits?.balance || 0;
-        if (newBal > prevBal)
-          push(`+${newBal - prevBal} green credits added`, "success");
-      } catch (e) {}
+      push(e.message || "Order failed", "error");
+    }
+  };
+
+  const confirmBuy = async () => {
+    if (!pendingBuy) return;
+    const { listingId } = pendingBuy;
+    setPendingBuy(null);
+    try {
+      await placeOrder(listingId, true);
     } catch (e) {
       push(e.message || "Order failed", "error");
     }
@@ -139,6 +194,56 @@ export default function ProductPage() {
               </div>
             </div>
           )}
+          {fitGuide?.sized && (
+            <div className="size-picker" style={{ marginTop: 14 }}>
+              <strong
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <Package size={15} /> Select {fitGuide.size_label || "size"}
+              </strong>
+              <div className="size-options">
+                {fitGuide.size_options.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={
+                      "size-pill" +
+                      (selectedSize === s ? " selected" : "") +
+                      (fitGuide.recommended_size === s ? " recommended" : "")
+                    }
+                    onClick={() => setSelectedSize(s)}
+                    aria-pressed={selectedSize === s}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {fitGuide.message && fitGuide.recommended_size && (
+                <div
+                  className="disposition"
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                  }}
+                >
+                  <Sparkles
+                    size={16}
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 2,
+                      color: "var(--brand-orange-deep)",
+                    }}
+                  />
+                  <div>
+                    <strong>{fitGuide.message}</strong>
+                    <span className="muted"> — based on your size profile.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -150,24 +255,28 @@ export default function ProductPage() {
           {newListings.length === 0 && (
             <div className="muted">Out of stock.</div>
           )}
-          <div className="grid preloved-grid stagger">
-            {newListings.map((l) => (
-              <div className="card preloved-buy buynew" key={l.id}>
+          {newListings.length > 0 && (
+            <div className="grid preloved-grid stagger">
+              {/* NEW units are fungible — show a single card and buy any one. */}
+              <div className="card preloved-buy buynew">
                 <div className="preloved-info">
-                  <div className="price">₹{l.price}</div>
+                  <div className="price">₹{newListings[0].price}</div>
+                  <div className="muted" style={{ marginTop: 4 }}>
+                    {newListings.length} in stock
+                  </div>
                 </div>
                 <div className="preloved-actions">
                   <button
                     className="buy"
-                    onClick={() => buy(l.id)}
+                    onClick={() => buy(newListings[0].id)}
                     aria-label="Buy this item"
                   >
                     <ShoppingCart size={16} /> Buy
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
 
           <h3
             style={{
@@ -269,6 +378,14 @@ export default function ProductPage() {
           </aside>
         )}
       </div>
+
+      <ConfirmModal
+        open={!!pendingBuy}
+        warnings={pendingBuy?.warnings || []}
+        recommended={pendingBuy?.recommended}
+        onCancel={() => setPendingBuy(null)}
+        onConfirm={confirmBuy}
+      />
     </div>
   );
 }

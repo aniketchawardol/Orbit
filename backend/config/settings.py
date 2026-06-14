@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "grading",
     "rerouting",
     "nextowner",
+    "returnprevention",
 ]
 
 MIDDLEWARE = [
@@ -289,6 +290,18 @@ REROUTING_OFFER_FRAUD_MAX = 0.3      # don't bribe likely fraudsters
 REROUTING_OFFER_MIN_QUALITY = 0.4    # item must be genuinely usable to keep
 REROUTING_OFFER_CASH_SHARE = 0.6     # fraction of make-whole paid as cash (rest credits)
 REROUTING_CREDIT_COST_FACTOR = 0.9   # ₹ cost to company per 1 credit of perceived value
+
+# --- Return Prevention (pre-purchase fit + compatibility guard) ---------------
+# Stop incompatible buys before they happen. Apparel/footwear: instant size
+# recommendation from the shopper's declared sizes (User.profile["sizes"]).
+# Accessories (a product with a "compatible_model" attribute): an LLM checks the
+# shopper's order history and warns only when the item won't fit a device they
+# own. Verdicts are precomputed in parallel on login and cached (Redis) so the
+# Buy path is instant. Reuses the LLM_PROVIDERS table; "mock" (or no key) ->
+# deterministic rules fallback, no network.
+RETURNPREV_LLM_PROVIDER = os.environ.get("RETURNPREV_LLM_PROVIDER", "auto")
+RETURNPREV_LLM_TIMEOUT = float(os.environ.get("RETURNPREV_LLM_TIMEOUT", "20"))
+RETURNPREV_CACHE_TTL = int(os.environ.get("RETURNPREV_CACHE_TTL", "3600"))
 
 # --- Next Best Owner (P2P resale matching + Dutch auction) --------------------
 # A buyer resells an item; we embed products and buyer "demand" profiles, match
