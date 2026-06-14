@@ -38,6 +38,47 @@ ADVANCE = {
 def place_order(request):
     """Buy a listing. Row-lock prevents double-sell.
 
+    Pre-purchase return prevention: warn on a wrong apparel/footwear size or an
+    incompatible accessory (from order history) unless the buyer acknowledges
+    (ack=true). The guard runs OUTSIDE the row lock so we never hold a DB lock
+    across an LLM call; a missing/inactive listing falls through to the
+    authoritative check inside the atomic block.
+    """
+    listing_id = request.data.get("listing_id")
+    chosen_size = (request.data.get("chosen_size") or "").strip()
+    ack = bool(request.data.get("ack"))
+
+    from returnprevention import services as rp
+
+    guard_listing = (
+        Listing.objects.select_related("unit__product")
+        .filter(pk=listing_id, state=ListingStates.ACTIVE)
+        .first()
+    )
+    if guard_listing is not None:
+        guard = rp.purchase_warnings(
+            request.user, guard_listing.unit.product, chosen_size
+        )
+        if guard["size_required"]:
+            return Response(
+                {
+                    "detail": "Please select a size.",
+                    "kind": "size_required",
+                    "size_options": guard["size_options"],
+                    "recommended_size": guard["recommended_size"],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        warnings = guard["warnings"]
+        if warnings and not ack:
+            return Response(
+                {
+                    "detail": warnings[0]["message"],
+                    "warnings": warnings,
+                    "recommended_size": guard["recommended_size"],
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
     Pre-loved items are auction-backed (Next Best Owner): if the listing has an
     associated Dutch auction we delegate to that engine so the buyer pays the
     current descending price and earns the green-credit bonus, and the auction is
@@ -88,7 +129,9 @@ def place_order(request):
         unit = listing.unit
         unit.owner = request.user
         unit.transition(UnitStates.SOLD, actor=request.user)
-        order = Order.objects.create(buyer=request.user, listing=listing)
+        order = Order.objects.create(
+            buyer=request.user, listing=listing, chosen_size=chosen_size
+        )
         # Green credits: award for pre-loved purchase
         if listing.source == ListingSources.USER_RESALE:
             award_credits(request.user, 20, "BUY_USER_RESALE", "Bought pre-loved (user resale)", order.id)

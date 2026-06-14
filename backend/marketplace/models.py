@@ -80,6 +80,8 @@ class Order(StatefulItem):
     listing = models.ForeignKey(
         Listing, on_delete=models.CASCADE, related_name="orders"
     )
+    # Size the buyer chose at purchase (apparel/footwear); blank for unsized items.
+    chosen_size = models.CharField(max_length=20, blank=True, default="")
     return_reason = models.CharField(
         max_length=20, choices=ReturnReasons.choices, blank=True
     )

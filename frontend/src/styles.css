@@ -1614,3 +1614,115 @@ tr:last-child td {
     max-width: none;
   }
 }
+
+/* --- Return prevention: size picker + confirm modal --- */
+.size-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.size-pill {
+  position: relative;
+  min-width: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-stroke);
+  background: var(--glass-light);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.size-pill:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+.size-pill.selected {
+  border-color: var(--brand-orange-deep);
+  background: var(--buy-orange, var(--brand-orange));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(228, 121, 17, 0.28);
+}
+.size-pill.recommended::after {
+  content: "★";
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  font-size: 11px;
+  color: var(--brand-orange-deep);
+}
+.size-pill.selected.recommended::after {
+  color: #fff;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(16, 22, 32, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: rp-fade 0.15s ease;
+}
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  border-radius: var(--radius-lg);
+  animation: rp-pop 0.16s ease;
+}
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.modal-close:hover {
+  color: var(--text);
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--brand-orange-deep);
+}
+.modal-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.modal-body {
+  margin: 12px 0 18px;
+}
+.modal-warning {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-weight: 500;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@keyframes rp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
