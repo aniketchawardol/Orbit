@@ -230,6 +230,15 @@ def aggregate(aid, partials) -> None:
             decide_route.delay(a.id)
         except Exception:  # noqa: BLE001 — broker down shouldn't break grading
             log.exception("could not enqueue rerouting for assessment %s", aid)
+    elif a.context == AssessmentContext.RESALE:
+        # Hand off to the Next Best Owner engine: price the item, match buyers,
+        # and start the Dutch auction. A failure here must never break grading.
+        try:
+            from nextowner.tasks import price_and_match
+
+            price_and_match.delay(a.id)
+        except Exception:  # noqa: BLE001 — broker down shouldn't break grading
+            log.exception("could not enqueue nextowner pricing for assessment %s", aid)
 
 
 def run_all_sync(aid) -> None:

@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "greencredits",
     "grading",
     "rerouting",
+    "nextowner",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +173,7 @@ LOGGING = {
             "core",
             "catalog",
             "greencredits",
+            "nextowner",
         )
     },
 }
@@ -288,3 +290,71 @@ REROUTING_OFFER_MIN_QUALITY = 0.4    # item must be genuinely usable to keep
 REROUTING_OFFER_CASH_SHARE = 0.6     # fraction of make-whole paid as cash (rest credits)
 REROUTING_CREDIT_COST_FACTOR = 0.9   # ₹ cost to company per 1 credit of perceived value
 
+# --- Next Best Owner (P2P resale matching + Dutch auction) --------------------
+# A buyer resells an item; we embed products and buyer "demand" profiles, match
+# the best-fit local buyers (bipartite top-k), then run a descending-price
+# (Dutch) auction that widens to more buyers as the price steps down. Green
+# credits sweeten resold purchases. Vectors are precomputed in parallel and
+# cached so matching never re-embeds in the request path.
+#
+# Text embeddings: "local" = sentence-transformers MiniLM on CPU (worker); "mock"
+# = deterministic hash vectors (no torch) for tests/offline. Falls back to mock
+# if the model can't load. GPU/larger models via a hosted endpoint = future work.
+NEXTOWNER_EMBEDDING_PROVIDER = os.environ.get("NEXTOWNER_EMBEDDING_PROVIDER", "local")
+NEXTOWNER_EMBEDDING_MODEL = os.environ.get(
+    "NEXTOWNER_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+)
+NEXTOWNER_MOCK_EMBEDDING_DIM = int(os.environ.get("NEXTOWNER_MOCK_EMBEDDING_DIM", "64"))
+
+# Match-score weights (sum ~1): semantic taste, category affinity, price fit,
+# quality fit, green-buying propensity. Tunable without code changes.
+NEXTOWNER_MATCH_WEIGHTS = {
+    "semantic": float(os.environ.get("NEXTOWNER_W_SEMANTIC", "0.45")),
+    "category": float(os.environ.get("NEXTOWNER_W_CATEGORY", "0.20")),
+    "price": float(os.environ.get("NEXTOWNER_W_PRICE", "0.20")),
+    "quality": float(os.environ.get("NEXTOWNER_W_QUALITY", "0.10")),
+    "green": float(os.environ.get("NEXTOWNER_W_GREEN", "0.05")),
+}
+# Demo simplification: treat every buyer as same-locality (skip the city filter).
+NEXTOWNER_SAME_LOCALITY_DEMO = os.environ.get("NEXTOWNER_SAME_LOCALITY_DEMO", "1") == "1"
+NEXTOWNER_RECENCY_HALFLIFE_DAYS = float(os.environ.get("NEXTOWNER_RECENCY_HALFLIFE_DAYS", "45"))
+
+# Dutch auction: start ABOVE fair value and step the price down each interval,
+# alerting one more tier of buyers per step, until sold or the reserve / last
+# tier is reached. The auction range (start premium .. reserve discount around
+# the fair value) is intentionally WIDER than the pricing band below, so the
+# price visibly descends across several steps rather than snapping to the floor.
+NEXTOWNER_AUCTION_TIER_SIZE = int(os.environ.get("NEXTOWNER_AUCTION_TIER_SIZE", "3"))
+NEXTOWNER_AUCTION_MAX_TIER = int(os.environ.get("NEXTOWNER_AUCTION_MAX_TIER", "4"))
+NEXTOWNER_AUCTION_STEP_PCT = float(os.environ.get("NEXTOWNER_AUCTION_STEP_PCT", "12"))
+NEXTOWNER_AUCTION_INTERVAL_SECONDS = int(
+    os.environ.get("NEXTOWNER_AUCTION_INTERVAL_SECONDS", "60")
+)
+# Opening ask = est_value * (1 + start_premium); reserve = est_value * (1 - reserve_discount).
+NEXTOWNER_AUCTION_START_PREMIUM = float(os.environ.get("NEXTOWNER_AUCTION_START_PREMIUM", "0.25"))
+NEXTOWNER_AUCTION_RESERVE_DISCOUNT = float(
+    os.environ.get("NEXTOWNER_AUCTION_RESERVE_DISCOUNT", "0.30")
+)
+
+# Pricing: est_value = P0 * [rho_min + (rho_max-rho_min)*quality^gamma]
+#                         * (1-d_cat)^months * (1 - lambda*fraud)
+# band = est_value * (1 ± band_width*(1-confidence)); the floor doubles as the
+# seller's reserve (the auction never drops below it).
+NEXTOWNER_PRICE_RHO_MIN = float(os.environ.get("NEXTOWNER_PRICE_RHO_MIN", "0.15"))
+NEXTOWNER_PRICE_RHO_MAX = float(os.environ.get("NEXTOWNER_PRICE_RHO_MAX", "0.75"))
+NEXTOWNER_PRICE_GAMMA = float(os.environ.get("NEXTOWNER_PRICE_GAMMA", "1.2"))
+NEXTOWNER_PRICE_FRAUD_LAMBDA = float(os.environ.get("NEXTOWNER_PRICE_FRAUD_LAMBDA", "0.5"))
+NEXTOWNER_PRICE_BAND_WIDTH = float(os.environ.get("NEXTOWNER_PRICE_BAND_WIDTH", "0.15"))
+# Monthly depreciation rate by category (fraction/month); electronics fastest.
+NEXTOWNER_DEPRECIATION_BY_CATEGORY = {
+    "electronics": 0.05,
+    "apparel": 0.03,
+    "footwear": 0.035,
+}
+NEXTOWNER_DEPRECIATION_DEFAULT = float(os.environ.get("NEXTOWNER_DEPRECIATION_DEFAULT", "0.03"))
+
+# Green credits for buying resold goods: a base award plus a bonus that grows as
+# the Dutch price drops (rewards clearing slow inventory; eases resale hesitation).
+NEXTOWNER_CREDIT_BASE = int(os.environ.get("NEXTOWNER_CREDIT_BASE", "20"))
+NEXTOWNER_CREDIT_MAX_BONUS = int(os.environ.get("NEXTOWNER_CREDIT_MAX_BONUS", "40"))
+NEXTOWNER_SELLER_RESELL_CREDIT = int(os.environ.get("NEXTOWNER_SELLER_RESELL_CREDIT", "30"))

@@ -72,3 +72,44 @@ def create_return_assessment(order, uploaded_paths, client_metadatas=None):
         log.exception("could not enqueue grading for assessment %s", assessment.id)
 
     return assessment
+
+
+def create_resale_assessment(unit, uploaded_paths, reference_paths=None, triggered_by=None):
+    """Create a RESALE-context assessment and enqueue async grading.
+
+    Unlike returns, a resale has no Order (the seller may be listing a brand-new
+    external item), so `order` stays null. `reference_paths` is the linked catalog
+    image when the item was originally bought here (normal image-compare workflow);
+    for external items it is empty, so the VLM grades in anomaly/quality mode
+    (no hash/similarity baseline to compare against).
+    Returns the GradingAssessment (or None if it could not be created/enqueued).
+    """
+    reference_paths = reference_paths or []
+
+    assessment = GradingAssessment.objects.create(
+        unit=unit,
+        order=None,
+        triggered_by=triggered_by,
+        context=AssessmentContext.RESALE,
+        status=AssessmentStatus.PENDING,
+    )
+
+    images = [
+        GradingImage(assessment=assessment, path=path, role=ImageRole.UPLOADED)
+        for path in uploaded_paths
+    ]
+    images += [
+        GradingImage(assessment=assessment, path=path, role=ImageRole.REFERENCE)
+        for path in reference_paths
+    ]
+    if images:
+        GradingImage.objects.bulk_create(images)
+
+    from .tasks import run_assessment
+
+    try:
+        run_assessment.delay(assessment.id)
+    except Exception:  # noqa: BLE001 — broker down shouldn't break the resale
+        log.exception("could not enqueue grading for resale assessment %s", assessment.id)
+
+    return assessment

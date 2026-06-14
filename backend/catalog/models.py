@@ -4,12 +4,24 @@ from django.db import models
 from core.models import StatefulItem, TimeStamped
 
 
+class ProductOrigin(models.TextChoices):
+    PLATFORM = "PLATFORM", "Platform catalog"
+    EXTERNAL = "EXTERNAL", "User-listed (brought from outside)"
+
+
 class Product(TimeStamped):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=50)
     mrp = models.PositiveIntegerField(help_text="₹")
     image = models.ImageField(upload_to="products/", blank=True, null=True)
+    # Where the product came from. PLATFORM = seller-listed catalog item (has a
+    # reference image for grading). EXTERNAL = a brand-new item a user brought
+    # from outside to resell — no reference photo, so grading runs in VLM
+    # anomaly/quality mode instead of image comparison.
+    origin = models.CharField(
+        max_length=10, choices=ProductOrigin.choices, default=ProductOrigin.PLATFORM
+    )
     # Open-ended catalog attributes (JSONB): per-category fields such as
     # {"brand": "...", "material": "...", "size": "...", "compatible_model": "..."}.
     # Fed to the AI grader so inspection criteria adapt to the product.
